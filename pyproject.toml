@@ -7,17 +7,19 @@ requires = [
 [project]
 name = "ota-image-libs"
 description = "OTA Image Libraries and Tools."
-version = "0.0.1-dev0"
+dynamic = ["optional-dependencies"]
+version = "0.0.33-dev2"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = [
   "LICENSE",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.8"
 classifiers = [
   "License :: OSI Approved :: Apache Software License",
   "Operating System :: Unix",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -25,37 +27,71 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
+  "cryptography~=45.0",
+  "msgpack~=1.1",
+  "pydantic>=2.10,<3",
+  "pyjwt>=2.9.0,<3",
+  "pyyaml>=6.0.1,<7",
   "simple-sqlite3-orm~=0.12",
   "typing-extensions>=4.6.3",
+  "zstandard>=0.22,<0.24",
 ]
 urls.Source = "https://github.com/tier4/ota-image-libs"
+
+[project.scripts]
+ota-image-tools = "ota_image_tools.__main__:main"
 
 [dependency-groups]
 dev = [
   "coverage>=7,<8",
   "pre-commit>=3,<5",
   "pytest~=8.3",
-  # pin pytest-asyncio to 0.23.8 for now,
-  #   as 0.24 and newer will break the tests.
-  "pytest-asyncio==0.23.8",
   "pytest-mock~=3.14",
-  "requests-mock~=1.12",
   "ruff",
 ]
 
+[tool.hatch.metadata.hooks.custom]
+path = "scripts/hatch_build_lock_deps.py"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  ".github",
+]
+
+[tool.hatch.build.targets.wheel]
+only-include = [
+  "src",
+]
+sources = [
+  "src",
+]
+
+[tool.pyright]
+exclude = [
+  "**/__pycache__",
+  ".ruff_cache",
+  ".venv",
+  "venv",
+  ".tests",
+]
+ignore = [
+  "proto/**",
+  "**/*_pb2.py*",
+  "**/*_pb2_grpc.py*",
+  "scripts",
+  "tests/scripts",
+]
+typeCheckingMode = "standard"
+pythonVersion = "3.8"
 
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "py38"
 # NOTE: not include tests and tools for now
 include = [
   "tests/**/*.py",
   "src/**/*.py",
   "pyproject.toml",
-]
-extend-exclude = [
-  "*_pb2.py*",
-  "*_pb2_grpc.py*",
 ]
 
 [tool.ruff.lint]

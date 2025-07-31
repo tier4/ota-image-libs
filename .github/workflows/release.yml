@@ -1,0 +1,78 @@
+name: Release CI
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+on:
+  release:
+    types: [published]
+  # allow manually triggering the build
+  workflow_dispatch:
+
+jobs:
+  build_python_packages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      OTA_IMAGE_LIBS_WHL: ${{ steps.set_env.outputs.OTA_IMAGE_LIBS_WHL }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.7.21
+
+      - name: Setup python
+        uses: actions/setup-python@v5
+        with:
+          # use the minimum py ver we support to generate the wheel
+          python-version-file: ".python-version"
+
+      - name: Build python package
+        run: |
+          uv build
+
+      - name: Set output variables
+        id: set_env
+        run: |
+          OTA_IMAGE_LIBS_WHL=$(basename $(ls dist/*.whl))
+          echo OTA_IMAGE_LIBS_WHL=${OTA_IMAGE_LIBS_WHL} >> $GITHUB_OUTPUT
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-python-packages
+          path: dist/*
+
+
+  post_build:
+    runs-on: ubuntu-latest
+    needs: [build_python_packages]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Download python packages artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: artifacts-python-packages
+          path: dist
+
+      - name: Calculate artifacts' checksum
+        uses: ./.github/actions/calculate_checksum
+        with:
+          file_patterns: '*'
+          directory: 'dist'
+
+      - name: Publish release artifacts
+        if: ${{ github.event_name == 'release' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
