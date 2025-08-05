@@ -38,18 +38,19 @@ def fpath_on_target(_canonical_path: StrOrPath, target_mnt: StrOrPath) -> Path:
     return _target_on_mnt
 
 
-def prepare_dir(entry: DirTypedDict, *, target_mnt: StrOrPath) -> None:
+def prepare_dir(entry: DirTypedDict, *, target_mnt: StrOrPath) -> Path:
     _target_on_mnt = fpath_on_target(entry["path"], target_mnt=target_mnt)
     _target_on_mnt.mkdir(exist_ok=True, parents=True)
     os.chown(_target_on_mnt, uid=entry["uid"], gid=entry["gid"])
     os.chmod(_target_on_mnt, mode=entry["mode"])
     if xattrs := entry["xattrs"]:
         _set_xattr(_target_on_mnt, xattrs)
+    return _target_on_mnt
 
 
 def prepare_non_regular(
     entry: NonRegularFileTypedDict, *, target_mnt: StrOrPath
-) -> None:
+) -> Path:
     _target_on_mnt = fpath_on_target(entry["path"], target_mnt=target_mnt)
     if stat.S_ISLNK(entry["mode"]):
         _symlink_target_raw = entry["meta"]
@@ -80,15 +81,16 @@ def prepare_non_regular(
             follow_symlinks=False,
         )
     else:
-        return  # silently ignore unknown file type
+        return _target_on_mnt  # silently ignore unknown file type
 
     if xattrs := entry["xattrs"]:
         _set_xattr(_target_on_mnt, xattrs)
+    return _target_on_mnt
 
 
 def prepare_regular_copy(
     entry: RegularFileTypedDict, _rs: StrOrPath, *, target_mnt: StrOrPath
-) -> StrOrPath:
+) -> Path:
     _target_on_mnt = fpath_on_target(entry["path"], target_mnt=target_mnt)
     shutil.copyfile(_rs, _target_on_mnt, follow_symlinks=False)
     os.chown(_target_on_mnt, uid=entry["uid"], gid=entry["gid"])
@@ -104,7 +106,7 @@ def prepare_regular_hardlink(
     *,
     target_mnt: StrOrPath,
     hardlink_skip_apply_permission: bool = False,
-) -> StrOrPath:
+) -> Path:
     # NOTE: os.link will make dst a hardlink to src.
     _target_on_mnt = fpath_on_target(entry["path"], target_mnt=target_mnt)
     os.link(_rs, _target_on_mnt)
