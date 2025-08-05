@@ -274,6 +274,14 @@ class FileTableDBHelper:
             ft_inode_orm = FileTableInodeORM(fst_conn)
             ft_inode_orm.orm_bootstrap_db()
 
+    def select_all_digests_with_size(self) -> Generator[tuple[bytes, int]]:
+        """Select all unique digests of this file_table, with their size."""
+        with closing(self.connect_fstable_db()) as _con:
+            stmt = f"SELECT digest,size FROM {FT_RESOURCE_TABLE_NAME}"
+            _cursor = _con.execute(stmt)
+            _cursor.row_factory = cast("Callable[..., tuple[bytes, int]]", sqlite3.Row)
+            yield from _cursor.execute(stmt)
+
     def iter_dir_entries(self) -> Generator[DirTypedDict]:
         with FileTableDirORM(self.connect_fstable_db()) as orm:
             _row_factory = typing.cast(Callable[..., DirTypedDict], sqlite3.Row)
