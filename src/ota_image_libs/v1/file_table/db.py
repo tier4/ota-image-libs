@@ -261,8 +261,9 @@ class FileTableDBHelper:
             enable_mmap(_conn, enable_mmap_size)
         return _conn
 
-    def bootstrap_db(self) -> None:
-        with closing(self.connect_fstable_db()) as fst_conn:
+    def bootstrap_db(self, *, enable_wal: bool = False) -> None:
+        # NOTE: once the db is created with wal enabled, the setting will be persist.
+        with closing(self.connect_fstable_db(enable_wal=enable_wal)) as fst_conn:
             ft_regular_orm = FileTableRegularORM(fst_conn)
             ft_regular_orm.orm_bootstrap_db()
             ft_dir_orm = FileTableDirORM(fst_conn)
@@ -305,7 +306,6 @@ class FileTableDBHelper:
                 "FROM", FT_REGULAR_TABLE_NAME,
                 "JOIN", FT_INODE_TABLE_NAME, "USING(inode_id)",
                 "JOIN", FT_RESOURCE_TABLE_NAME, "USING(resource_id)",
-                "ORDER BY", "digest"
             )
             # fmt: on
             yield from orm.orm_select_entries(
