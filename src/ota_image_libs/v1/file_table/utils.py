@@ -112,11 +112,13 @@ def prepare_regular_copy(
 ) -> Path:
     _contents, _size = entry["contents"], entry["size"]
     _uid, _gid, _mode = entry["uid"], entry["gid"], entry["mode"]
+    if _rs is None and _contents is None and _size != 0:
+        raise PrepareEntryFailed(entry) from ValueError(
+            "not an inlined entry, but resource is not provided"
+        )
+
     _target_on_mnt = fpath_on_target(entry["path"], target_mnt=target_mnt)
     try:
-        if _rs is None and _contents is None and _size != 0:
-            raise ValueError("not an inlined entry, but resource is not provided")
-
         _target_on_mnt.touch(exist_ok=True, mode=_mode)
         if _contents:
             _target_on_mnt.write_bytes(_contents)
@@ -145,9 +147,9 @@ def prepare_regular_hardlink(
     target_mnt: StrOrPath,
     hardlink_skip_apply_permission: bool = False,
 ) -> Path:
+    _target_on_mnt = fpath_on_target(entry["path"], target_mnt=target_mnt)
     try:
         # NOTE: os.link will make dst a hardlink to src.
-        _target_on_mnt = fpath_on_target(entry["path"], target_mnt=target_mnt)
         os.link(_rs, _target_on_mnt)
         if not hardlink_skip_apply_permission:
             os.chown(_target_on_mnt, uid=entry["uid"], gid=entry["gid"])
@@ -156,6 +158,7 @@ def prepare_regular_hardlink(
                 _set_xattr(_target_on_mnt, _in=_xattr)
         return _target_on_mnt
     except Exception as e:
+        _target_on_mnt.unlink(missing_ok=True)
         raise PrepareEntryFailed(entry) from e
 
 
