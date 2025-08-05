@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 import typing
 from contextlib import closing
@@ -28,16 +29,25 @@ from simple_sqlite3_orm import (
     ORMThreadPoolBase,
     gen_sql_stmt,
 )
-from simple_sqlite3_orm.utils import enable_mmap, enable_wal_mode, wrap_value
+from simple_sqlite3_orm.utils import (
+    check_db_integrity,
+    enable_mmap,
+    enable_wal_mode,
+    lookup_table,
+    wrap_value,
+)
 
-from ota_image_libs.common.model_spec import MsgPackedDict
+from ota_image_libs.common.model_spec import MsgPackedDict, StrOrPath
+from ota_image_libs.v1.media_types import OTA_IMAGE_FILETABLE
 
 from . import (
+    FILE_TABLE_FNAME,
     FT_DIR_TABLE_NAME,
     FT_INODE_TABLE_NAME,
     FT_NON_REGULAR_TABLE_NAME,
     FT_REGULAR_TABLE_NAME,
     FT_RESOURCE_TABLE_NAME,
+    MEDIA_TYPE_FNAME,
 )
 from .schema import (
     FileTableDirectories,
@@ -391,3 +401,94 @@ class FileTableDBHelper:
         if conn is not None:
             return FileTableResourceORM(conn)
         return FileTableResourceORM(self.connect_fstable_db())
+
+    # APIs for saving and loading file_table to/from OTA image metadata directory.
+    #
+    # ------ OTA image file_table storage protocol ------ #
+    #
+    # The file_table is saved to the target directory as follow:
+    #   <dst>/
+    #       ├── file_table.sqlite3
+    #       └── mediaType
+    #
+
+    @staticmethod
+    def _check_base_filetable(db_f: StrOrPath) -> StrOrPath:
+        with contextlib.closing(
+            sqlite3.connect(f"file:{db_f}?mode=ro&immutable=1", uri=True)
+        ) as con:
+            try:
+                if not check_db_integrity(con):
+                    raise ValueError(f"{db_f} fails integrity check")
+
+                if not (
+                    lookup_table(con, FT_REGULAR_TABLE_NAME)
+                    and lookup_table(con, FT_RESOURCE_TABLE_NAME)
+                ):
+                    raise ValueError(
+                        f"{db_f} presented, but either ft_regular or ft_resource tables missing"
+                    )
+            except sqlite3.Error as e:
+                raise ValueError(f"{db_f} might be broken: {e}") from e
+
+        try:
+            with contextlib.closing(sqlite3.connect(":memory:")) as con:
+                con.execute(f"ATTACH '{db_f}' AS attach_test;")
+                return db_f
+        except Exception as e:
+            raise ValueError(
+                f"{db_f} is valid, but cannot be attached: {e!r}, skip"
+            ) from e
+
+    def save_fstable(
+        self,
+        dst_dir: StrOrPath,
+        *,
+        saved_name=FILE_TABLE_FNAME,
+        media_type=OTA_IMAGE_FILETABLE,
+        media_type_fname=MEDIA_TYPE_FNAME,
+    ) -> None:
+        """Save the <db_f> to <dst>, with image-meta save layout."""
+
+        dst_dir = Path(dst_dir)
+        dst_dir.mkdir(exist_ok=True, parents=True)
+
+        with contextlib.closing(
+            self.connect_fstable_db()
+        ) as _fs_conn, contextlib.closing(
+            sqlite3.connect(dst_dir / saved_name)
+        ) as _dst_conn:
+            with _dst_conn as conn:
+                _fs_conn.backup(conn)
+
+        media_type_f = dst_dir / media_type_fname
+        media_type_f.write_text(media_type)
+
+    @classmethod
+    def find_saved_fstable(cls, image_meta_dir: StrOrPath) -> Path:
+        """Find and validate saved file_table in <image_meta_dir>.
+
+        Raises:
+            ValueError if the the target directory is not a image_meta dir.
+            FileNotFoundError if the file_table is not found.
+
+        Returns:
+            Return the file_table database fpath if it is a valid file_table.
+        """
+        image_meta_dir = Path(image_meta_dir)
+        media_type_f = image_meta_dir / MEDIA_TYPE_FNAME
+
+        if not (
+            media_type_f.is_file() and media_type_f.read_text() == OTA_IMAGE_FILETABLE
+        ):
+            raise ValueError(
+                f"{MEDIA_TYPE_FNAME} not found under {image_meta_dir=}, "
+                f"or mediaType is unsupported (supported type: {OTA_IMAGE_FILETABLE=})"
+            )
+
+        db_f = image_meta_dir / FILE_TABLE_FNAME
+        if not db_f.is_file():
+            raise FileNotFoundError(f"{db_f} not found under {image_meta_dir=}")
+
+        cls._check_base_filetable(db_f)
+        return db_f
