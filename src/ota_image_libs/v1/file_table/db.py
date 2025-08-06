@@ -370,8 +370,8 @@ class FileTableDBHelper:
             return FileTableDirORM(conn)
         return FileTableDirORM(self.connect_fstable_db())
 
-    def get_regular_file_orm_pool(self, db_conn_num: int) -> FileTableDirORMPool:
-        return FileTableDirORMPool(
+    def get_regular_file_orm_pool(self, db_conn_num: int) -> FileTableRegularORMPool:
+        return FileTableRegularORMPool(
             con_factory=self.connect_fstable_db, number_of_cons=db_conn_num
         )
 
@@ -384,8 +384,8 @@ class FileTableDBHelper:
 
     def get_non_regular_file_orm_pool(
         self, db_conn_num: int
-    ) -> FileTableRegularORMPool:
-        return FileTableRegularORMPool(
+    ) -> FileTableNonRegularORMPool:
+        return FileTableNonRegularORMPool(
             con_factory=self.connect_fstable_db, number_of_cons=db_conn_num
         )
 
