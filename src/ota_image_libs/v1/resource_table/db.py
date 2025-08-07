@@ -162,9 +162,7 @@ class PrepareResourceHelper:
                 bundle_entry = self._orm_pool.orm_select_entry(resource_id=bundle_rsid)
                 logger.debug(f"Requesting bundle({bundle_rsid=}): {bundle_entry}")
                 bundle_save_dst = self._working_dir / tmp_fname(str(bundle_rsid))
-                yield from self._prepare_filtered_resource(
-                    bundle_entry, bundle_save_dst
-                )
+                yield from self._prepare_resource(bundle_entry, bundle_save_dst)
                 self._bundle[bundle_rsid] = bundle_save_dst
         recreate_bundled_resource(entry, self._bundle[bundle_rsid], save_dst)
 
@@ -175,9 +173,7 @@ class PrepareResourceHelper:
         compressed_rsid = entry.filter_applied.list_resource_id()
         compressed_entry = self._orm_pool.orm_select_entry(resource_id=compressed_rsid)
         compressed_save_dst = self._working_dir / tmp_fname(str(compressed_rsid))
-        yield from self._prepare_filtered_resource(
-            compressed_entry, compressed_save_dst
-        )
+        yield from self._prepare_resource(compressed_entry, compressed_save_dst)
         try:
             recreate_zstd_compressed_resource(
                 entry, compressed_save_dst, save_dst, dctx=self._thread_local_dctx
@@ -207,7 +203,7 @@ class PrepareResourceHelper:
         for _slice in _slices_fpath:
             _slice.unlink(missing_ok=True)
 
-    def _prepare_filtered_resource(
+    def _prepare_resource(
         self, entry: ResourceTableManifest, save_dst: Path
     ) -> Generator[tuple[str, Path]]:
         filter_applied = entry.filter_applied
@@ -224,7 +220,7 @@ class PrepareResourceHelper:
 
     def prepare_resource_at_thread(
         self, digest: bytes, save_dst: Path
-    ) -> Generator[tuple[str, Path]]:
+    ) -> tuple[ResourceTableManifest, Generator[tuple[str, Path]]]:
         """Prepare resource for the given digest.
 
         NOTE that the `resource_id` in the resource_table is NOT the same as
@@ -237,8 +233,8 @@ class PrepareResourceHelper:
         target_entry: ResourceTableManifest = self._orm_pool.orm_select_entry(
             digest=digest
         )
-        filter_applied = target_entry.filter_applied
-        if filter_applied is None:
-            yield (target_entry.digest.hex(), save_dst)
-            return
-        yield from self._prepare_filtered_resource(target_entry, save_dst)
+
+        def _gen():
+            yield from self._prepare_resource(target_entry, save_dst)
+
+        return target_entry, _gen()
