@@ -70,9 +70,9 @@ def _prepare_resource_at_thread(
     tmp_resource_dir: Path,
 ) -> Path:
     save_dst = tmp_resource_dir / digest.hex()
-    for _requested_blob, _tmp_save_dst in rst_rshelper.prepare_resource_at_thread(
-        digest, save_dst
-    ):
+    _, _gen = rst_rshelper.prepare_resource_at_thread(digest, save_dst)
+
+    for _requested_blob, _tmp_save_dst in _gen:
         # copy the blobs that `prepare_resource` method requires
         shutil.copyfile(resource_dir / _requested_blob, _tmp_save_dst)
     # after all the blobs are prepare, the `prepare_resource` method will
@@ -215,8 +215,8 @@ def rebuild_rootfs_cmd_args(
 ) -> None:
     rebuild_rootfs_arg_parser = sub_arg_parser.add_parser(
         name="rebuild-rootfs",
-        help=(_help_txt := "Rebuild the rootfs from the OTA image."),
-        description=_help_txt,
+        help="Rebuild the rootfs from the OTA image.",
+        description="Rebuild the rootfs from the OTA image.",
         parents=parent_parser,
     )
     rebuild_rootfs_arg_parser.add_argument(
