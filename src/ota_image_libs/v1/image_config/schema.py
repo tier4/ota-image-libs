@@ -76,3 +76,23 @@ class ImageConfig(MetaFileBase):
     sys_config: Union[SysConfig.Descriptor, None] = None
     file_table: Union[FileTableDescriptor, ZstdCompressedFileTableDescriptor]
     labels: Annotations
+
+    @property
+    def sys_image_regular_files_count(self) -> int:
+        return self.labels.sys_image_regular_files_count
+
+    @property
+    def sys_image_dirs_count(self) -> int:
+        return self.labels.sys_image_dirs_count
+
+    @property
+    def sys_image_non_regular_files_count(self) -> int:
+        return self.labels.sys_image_non_regular_files_count
+
+    @property
+    def sys_image_unique_file_entries(self) -> int:
+        return self.labels.sys_image_unique_file_entries
+
+    @property
+    def sys_image_unique_file_entries_size(self) -> int:
+        return self.labels.sys_image_unique_file_entries_size
