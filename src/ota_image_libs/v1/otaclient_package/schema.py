@@ -80,7 +80,7 @@ class OTAClientPackageManifest(MetaFileBase):
 
     def find_package(
         self, version: str, architecture: Literal["arm64", "x86_64"]
-    ) -> OTAClientPayloadDescriptor:
+    ) -> OTAClientPayloadDescriptor | None:
         for _descriptor in self.layers:
             _annotations = _descriptor.annotations
             if not _annotations:
