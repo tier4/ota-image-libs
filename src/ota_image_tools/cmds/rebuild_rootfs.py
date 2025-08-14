@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# TODO: FIXME: as the iter_regular_entries now use the order of pathes, the
+#              rebuild_rootfs cmd needs to be re-implemented!
+
 
 from __future__ import annotations
 
@@ -31,6 +34,7 @@ from ota_image_libs.v1.file_table.utils import (
     prepare_non_regular,
     prepare_regular_copy,
     prepare_regular_hardlink,
+    prepare_regular_inlined,
 )
 from ota_image_libs.v1.image_index.utils import ImageIndexHelper
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, OTAReleaseKey
@@ -127,19 +131,20 @@ class RebuildRegularFilesHelper:
         for _entry in entries:
             _this_links_count = _entry["links_count"]
             _inode_id = _entry["inode_id"]
+            _is_inlined = _entry["contents"] or _entry["size"] == 0
 
             if _first_resource is None:
-                _contents = _entry["contents"]
-                if _contents is None:
+                if _is_inlined:
+                    _first_resource = prepare_regular_inlined(
+                        _entry, target_mnt=self.target_dir
+                    )
+                else:
                     _first_resource = _prepare_resource_at_thread(
                         digest,
                         rst_rshelper=self._rst_rshelper,
                         resource_dir=self.resource_dir,
                         tmp_resource_dir=self.tmp_resource_dir,
                     )
-                else:
-                    _first_resource = self.tmp_resource_dir / digest.hex()
-                    _first_resource.write_bytes(_contents)
 
                 _fpath_on_target = prepare_regular_hardlink(
                     _entry, _first_resource, target_mnt=self.target_dir
