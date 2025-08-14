@@ -50,8 +50,8 @@ dev = [
   "ruff",
 ]
 
-[tool.hatch.metadata.hooks.custom]
-path = "scripts/hatch_build_lock_deps.py"
+#[tool.hatch.metadata.hooks.custom]
+#path = "scripts/hatch_build_lock_deps.py"
 
 [tool.hatch.build.targets.sdist]
 exclude = [
