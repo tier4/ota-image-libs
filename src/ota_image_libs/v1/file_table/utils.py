@@ -108,24 +108,37 @@ def prepare_non_regular(
 
 
 def prepare_regular_copy(
-    entry: RegularFileTypedDict, _rs: StrOrPath | None = None, *, target_mnt: StrOrPath
+    entry: RegularFileTypedDict, _rs: StrOrPath, *, target_mnt: StrOrPath
 ) -> Path:
-    _contents, _size = entry["contents"], entry["size"]
     _uid, _gid, _mode = entry["uid"], entry["gid"], entry["mode"]
-    if _rs is None and _contents is None and _size != 0:
-        raise PrepareEntryFailed(entry) from ValueError(
-            "not an inlined entry, but resource is not provided"
-        )
+    _target_on_mnt = fpath_on_target(entry["path"], target_mnt=target_mnt)
+    try:
+        _target_on_mnt.touch(exist_ok=True, mode=_mode)
+        shutil.copyfile(_rs, _target_on_mnt, follow_symlinks=False)
+        if not (_uid == 0 and _gid == 0):
+            # NOTE: if owner is changed, the sticky bit will be reset.
+            #       Remember to always put chown before chmod !!!
+            os.chown(_target_on_mnt, uid=_uid, gid=_gid)
+            os.chmod(_target_on_mnt, mode=_mode)
 
+        if _xattr := entry["xattrs"]:
+            _set_xattr(_target_on_mnt, _in=_xattr)
+        return _target_on_mnt
+    except Exception as e:
+        _target_on_mnt.unlink(missing_ok=True)
+        raise PrepareEntryFailed(entry) from e
+
+
+def prepare_regular_inlined(
+    entry: RegularFileTypedDict, *, target_mnt: StrOrPath
+) -> Path:
+    _contents = entry["contents"]
+    _uid, _gid, _mode = entry["uid"], entry["gid"], entry["mode"]
     _target_on_mnt = fpath_on_target(entry["path"], target_mnt=target_mnt)
     try:
         _target_on_mnt.touch(exist_ok=True, mode=_mode)
         if _contents:
             _target_on_mnt.write_bytes(_contents)
-        else:
-            assert _rs is not None
-            shutil.copyfile(_rs, _target_on_mnt, follow_symlinks=False)
-
         if not (_uid == 0 and _gid == 0):
             # NOTE: if owner is changed, the sticky bit will be reset.
             #       Remember to always put chown before chmod !!!
