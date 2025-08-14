@@ -39,8 +39,6 @@ from pydantic import (
 )
 from typing_extensions import Annotated, Self
 
-from ota_image_tools._utils import exit_with_err_msg
-
 logger = logging.getLogger(__name__)
 
 MAX_CHAIN_LENGTH = 6
@@ -127,7 +125,7 @@ class CACertStore(Dict[Name, Certificate]):
             verifier.verify(sign_cert, intermediates=interm_cas)
         except Exception as e:
             logger.debug(f"failed to verify sign certificate: {e}", exc_info=e)
-            exit_with_err_msg(f"Sign certificate verification failed: {e}")
+            raise ValueError(f"Sign certificate verification failed: {e}") from e
 
 
 class X509CertChain:
