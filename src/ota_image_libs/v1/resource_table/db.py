@@ -229,10 +229,15 @@ class PrepareResourceHelper:
         This method guides the caller to download all the needed resources to get the
         resource with the given digest. For example, if the resource is a
         compressed archive, it may require the caller to download the archive.
+
+        Raises:
+            Raises ValueError when the requested digest is not found in the db.
         """
-        target_entry: ResourceTableManifest = self._orm_pool.orm_select_entry(
-            digest=digest
-        )
+        target_entry = self._orm_pool.orm_select_entry(digest=digest)
+        if target_entry is None:
+            raise ValueError(
+                f"resource with {digest.hex()} is not found in the rs_table!"
+            )
 
         def _gen():
             yield from self._prepare_resource(target_entry, save_dst)
