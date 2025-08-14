@@ -275,10 +275,15 @@ class FileTableDBHelper:
             ft_inode_orm = FileTableInodeORM(fst_conn)
             ft_inode_orm.orm_bootstrap_db()
 
-    def select_all_digests_with_size(self) -> Generator[tuple[bytes, int]]:
+    def select_all_digests_with_size(
+        self, *, exclude_inlined: bool = True
+    ) -> Generator[tuple[bytes, int]]:
         """Select all unique digests of this file_table, with their size."""
+        stmt = f"SELECT digest,size FROM {FT_RESOURCE_TABLE_NAME}"
+        if exclude_inlined:
+            stmt = f"SELECT digest,size FROM {FT_RESOURCE_TABLE_NAME} WHERE contents IS NULL"
+
         with closing(self.connect_fstable_db()) as _con:
-            stmt = f"SELECT digest,size FROM {FT_RESOURCE_TABLE_NAME}"
             _cursor = _con.execute(stmt)
             _cursor.row_factory = cast("Callable[..., tuple[bytes, int]]", sqlite3.Row)
             yield from _cursor.execute(stmt)
