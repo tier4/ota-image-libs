@@ -281,7 +281,7 @@ class FileTableDBHelper:
         """Select all unique digests of this file_table, with their size."""
         stmt = f"SELECT digest,size FROM {FT_RESOURCE_TABLE_NAME}"
         if exclude_inlined:
-            stmt = f"SELECT digest,size FROM {FT_RESOURCE_TABLE_NAME} WHERE contents IS NULL"
+            stmt = f"SELECT digest,size FROM {FT_RESOURCE_TABLE_NAME} WHERE contents IS NULL AND size!=0"
 
         with closing(self.connect_fstable_db()) as _con:
             _cursor = _con.execute(stmt)

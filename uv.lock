@@ -496,7 +496,7 @@ wheels = [
 
 [[package]]
 name = "ota-image-libs"
-version = "0.0.37.dev0"
+version = "0.0.37.dev1"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
