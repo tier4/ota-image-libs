@@ -283,10 +283,13 @@ class FileTableDBHelper:
         if exclude_inlined:
             stmt = f"SELECT digest,size FROM {FT_RESOURCE_TABLE_NAME} WHERE contents IS NULL AND size!=0"
 
-        with closing(self.connect_fstable_db()) as _con:
-            _cursor = _con.execute(stmt)
-            _cursor.row_factory = cast("Callable[..., tuple[bytes, int]]", sqlite3.Row)
-            yield from _cursor.execute(stmt)
+        with FileTableDirORM(self.connect_fstable_db()) as orm:
+            yield from orm.orm_select_entries(
+                _row_factory=typing.cast(
+                    "Callable[..., tuple[bytes, int]]", sqlite3.Row
+                ),
+                _stmt=stmt,
+            )
 
     def iter_dir_entries(self) -> Generator[DirTypedDict]:
         with FileTableDirORM(self.connect_fstable_db()) as orm:
@@ -298,7 +301,7 @@ class FileTableDBHelper:
                 _stmt = gen_sql_stmt(
                     "SELECT", "path,uid,gid,mode,xattrs",
                     "FROM", FT_DIR_TABLE_NAME,
-                    "JOIN", FT_INODE_TABLE_NAME, "USING", "(inode_id)",
+                    "JOIN", FT_INODE_TABLE_NAME, "USING(inode_id)",
                 )
             )
             # fmt: on
@@ -328,7 +331,7 @@ class FileTableDBHelper:
                 _stmt=gen_sql_stmt(
                     "SELECT", "path,uid,gid,mode,xattrs,meta",
                     "FROM", FT_NON_REGULAR_TABLE_NAME,
-                    "JOIN", FT_INODE_TABLE_NAME, "USING", "(inode_id)",
+                    "JOIN", FT_INODE_TABLE_NAME, "USING(inode_id)",
                 )
             )
             # fmt: on
