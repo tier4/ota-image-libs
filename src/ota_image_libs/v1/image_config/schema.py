@@ -78,6 +78,10 @@ class ImageConfig(MetaFileBase):
     labels: Annotations
 
     @property
+    def sys_image_size(self) -> int | None:
+        return self.labels.sys_image_size
+
+    @property
     def sys_image_regular_files_count(self) -> int:
         return self.labels.sys_image_regular_files_count
 
