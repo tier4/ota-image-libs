@@ -34,7 +34,6 @@ from simple_sqlite3_orm.utils import (
     enable_mmap,
     enable_wal_mode,
     lookup_table,
-    wrap_value,
 )
 
 from ota_image_libs.common.model_spec import MsgPackedDict, StrOrPath
@@ -244,7 +243,7 @@ class FileTableDBHelper:
         f"FROM base.{FT_REGULAR_TABLE_NAME}",
         f"JOIN base.{FT_RESOURCE_TABLE_NAME} USING(resource_id)",
         f"JOIN {FT_RESOURCE_TABLE_NAME} AS target_rs ON base.{FT_RESOURCE_TABLE_NAME}.digest = target_rs.digest",
-        f"WHERE base.{FT_RESOURCE_TABLE_NAME}.digest != {wrap_value(EMPTY_FILE_SHA256_BYTE)} AND target_rs.contents IS NULL",
+        f"WHERE base.{FT_RESOURCE_TABLE_NAME}.size != 0 AND target_rs.contents IS NULL",
         f"ORDER BY base.{FT_RESOURCE_TABLE_NAME}.digest",
     )
 
