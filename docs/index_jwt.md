@@ -19,7 +19,7 @@ Other algorithms MIGHT be supported in the future, but for OTA Image version 1, 
 - **`image_index`** *index.json OCI Descriptor*
 
     REQUIRED. This field indicates the index.json of the image being signed.
-    
+
 ## index.jwt headers Schema
 
 The following headers MUST be present in the `index.jwt`:
