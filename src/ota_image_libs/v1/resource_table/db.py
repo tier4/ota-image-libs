@@ -124,9 +124,16 @@ class PrepareResourceHelper:
     This class is for multi-threads use.
     """
 
-    def __init__(self, orm_pool: ResourceTableORMPool, working_resource_dir: Path):
+    def __init__(
+        self,
+        orm_pool: ResourceTableORMPool,
+        *,
+        resource_dir: Path,
+        download_tmp_dir: Path,
+    ):
         self._orm_pool = orm_pool
-        self._working_dir = working_resource_dir
+        self._resource_dir = resource_dir
+        self._tmp_dir = download_tmp_dir
 
         # for bundled entries, only allow one task to actually rebuild the bundle,
         self._bundle_process_lock = threading.Lock()
@@ -161,9 +168,11 @@ class PrepareResourceHelper:
             if bundle_rsid not in self._bundle:
                 bundle_entry = self._orm_pool.orm_select_entry(resource_id=bundle_rsid)
                 logger.debug(f"Requesting bundle({bundle_rsid=}): {bundle_entry}")
-                bundle_save_dst = self._working_dir / tmp_fname(str(bundle_rsid))
+                bundle_save_dst = self._tmp_dir / tmp_fname(str(bundle_rsid))
                 yield from self._prepare_resource(bundle_entry, bundle_save_dst)
                 self._bundle[bundle_rsid] = bundle_save_dst
+
+        # NOTE: keep the bundle for later use
         recreate_bundled_resource(entry, self._bundle[bundle_rsid], save_dst)
 
     def _prepare_compressed_resources(
@@ -172,7 +181,7 @@ class PrepareResourceHelper:
         assert isinstance(entry.filter_applied, CompressFilter)
         compressed_rsid = entry.filter_applied.list_resource_id()
         compressed_entry = self._orm_pool.orm_select_entry(resource_id=compressed_rsid)
-        compressed_save_dst = self._working_dir / tmp_fname(str(compressed_rsid))
+        compressed_save_dst = self._tmp_dir / tmp_fname(str(compressed_rsid))
         yield from self._prepare_resource(compressed_entry, compressed_save_dst)
         try:
             recreate_zstd_compressed_resource(
@@ -181,6 +190,7 @@ class PrepareResourceHelper:
         except Exception as e:
             logger.error(f"Failure during decompressing: {entry}: {e}", exc_info=e)
             raise
+
         compressed_save_dst.unlink(missing_ok=True)
 
     def _prepare_slided_resources(
@@ -193,13 +203,15 @@ class PrepareResourceHelper:
             _slice_entry: ResourceTableManifest = self._orm_pool.orm_select_entry(
                 resource_id=_rsid
             )
-            _slice_save_dst = self._working_dir / tmp_fname(str(_rsid))
+            _slice_save_dst = self._tmp_dir / tmp_fname(str(_rsid))
             _slices_fpath.append(_slice_save_dst)
             # NOTE: slice SHOULD NOT be filtered again, it MUST be the leaves in the resource
             #       filter applying tree.
             assert _slice_entry.filter_applied is None
             yield (_slice_entry.digest.hex(), _slice_save_dst)
         recreate_sliced_resource(entry, _slices_fpath, save_dst)
+
+        # after recovering the target resource, cleanup the slices
         for _slice in _slices_fpath:
             _slice.unlink(missing_ok=True)
 
@@ -219,7 +231,7 @@ class PrepareResourceHelper:
             raise NotImplementedError
 
     def prepare_resource_at_thread(
-        self, digest: bytes, save_dst: Path
+        self, digest: bytes
     ) -> tuple[ResourceTableManifest, Generator[tuple[str, Path]]]:
         """Prepare resource for the given digest.
 
@@ -240,6 +252,8 @@ class PrepareResourceHelper:
             )
 
         def _gen():
-            yield from self._prepare_resource(target_entry, save_dst)
+            yield from self._prepare_resource(
+                target_entry, self._resource_dir / digest.hex()
+            )
 
         return target_entry, _gen()
