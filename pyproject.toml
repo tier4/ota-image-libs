@@ -27,14 +27,14 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-  "cryptography~=45.0",
-  "msgpack~=1.1",
+  "cryptography>=45.0,<46",
+  "msgpack>=1.1,<2",
   "pydantic>=2.10,<3",
   "pyjwt>=2.9.0,<3",
   "pyyaml>=6.0.1,<7",
-  "simple-sqlite3-orm~=0.12",
+  "simple-sqlite3-orm>=0.12,<1",
   "typing-extensions>=4.6.3",
-  "zstandard>=0.22,<0.24",
+  "zstandard>=0.22,<0.26",
 ]
 urls.Source = "https://github.com/tier4/ota-image-libs"
 
