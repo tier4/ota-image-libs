@@ -14,7 +14,6 @@
 
 from .inspect_blob import inspect_blob_cmd_args
 from .inspect_index import inspect_index_cmd_args
-from .rebuild_rootfs import rebuild_rootfs_cmd_args
 from .verify_resources import verify_resources_cmd_args
 from .verify_sign import verify_sign_cmd_args
 
@@ -22,6 +21,5 @@ __all__ = [
     "inspect_blob_cmd_args",
     "inspect_index_cmd_args",
     "verify_sign_cmd_args",
-    "rebuild_rootfs_cmd_args",
     "verify_resources_cmd_args",
 ]
