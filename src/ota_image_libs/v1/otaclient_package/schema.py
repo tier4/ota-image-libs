@@ -72,7 +72,7 @@ class OTAClientPackageManifest(MetaFileBase):
     SchemaVersion = SchemaVersion[2]
     MediaType = MediaType[IMAGE_MANIFEST]
     ArtifactType = ArtifactType[OTACLIENT_PACKAGE_ARTIFACT]
-    
+
     config: OTAClientOriginManifest.Descriptor
     layers: List[OTAClientPayloadDescriptor]
     annotations: Annotations

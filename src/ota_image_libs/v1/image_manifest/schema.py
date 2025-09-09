@@ -84,7 +84,7 @@ class ImageManifest(_ImageIDMixin, MetaFileBase):
 
         MediaType = MediaType[IMAGE_MANIFEST]
         ArtifactType = ArtifactType[OTA_IMAGE_ARTIFACT]
-        
+
         annotations: Union[Annotations, None] = None
 
         @classmethod
@@ -116,7 +116,7 @@ class ImageManifest(_ImageIDMixin, MetaFileBase):
     SchemaVersion= SchemaVersion[2]
     MediaType = MediaType[IMAGE_MANIFEST]
     ArtifactType = ArtifactType[OTA_IMAGE_MEDIA_TYPE]
-    
+
     config: ImageConfig.Descriptor
     layers: List[Union[FileTableDescriptor, ZstdCompressedFileTableDescriptor]]
     annotations: Annotations

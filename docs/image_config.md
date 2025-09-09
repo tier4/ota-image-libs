@@ -83,7 +83,7 @@
 - **`vnd.tier4.ota.image.blobs-size`** *int*
 
   **`vnd.tier4.image.rootfs.unique-files-entries-size`** *int*
-    
+
     This REQUIRED annotation specifies the total size of all blobs in the image payload.
     For file-based OTA image, these two fields have the same value.
 
