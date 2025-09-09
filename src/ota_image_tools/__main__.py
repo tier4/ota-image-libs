@@ -26,7 +26,6 @@ from ota_image_tools._utils import configure_logging
 from .cmds import (
     inspect_blob_cmd_args,
     inspect_index_cmd_args,
-    rebuild_rootfs_cmd_args,
     verify_resources_cmd_args,
     verify_sign_cmd_args,
 )
@@ -78,7 +77,6 @@ def main():
     inspect_blob_cmd_args(sub_arg_parser)
     inspect_index_cmd_args(sub_arg_parser)
     verify_sign_cmd_args(sub_arg_parser)
-    rebuild_rootfs_cmd_args(sub_arg_parser)
     verify_resources_cmd_args(sub_arg_parser)
 
     # ------ top-level args parsing ----- #

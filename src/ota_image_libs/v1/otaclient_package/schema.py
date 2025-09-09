@@ -60,8 +60,8 @@ class OTAClientOriginManifest(BaseModel):
     packages: List[_Payload]
 
 
-# fmt: off
 class OTAClientPackageManifest(MetaFileBase):
+    # fmt: off
     class Descriptor(MetaFileDescriptor["OTAClientPackageManifest"]):
         MediaType = MediaType[OTACLIENT_PACKAGE_MANIFEST]
         ArtifactType = ArtifactType[OTACLIENT_PACKAGE_ARTIFACT]
@@ -76,7 +76,20 @@ class OTAClientPackageManifest(MetaFileBase):
     config: OTAClientOriginManifest.Descriptor
     layers: List[OTAClientPayloadDescriptor]
     annotations: Annotations
-# fmt: on
+    # fmt: on
+
+    def find_package(
+        self, version: str, architecture: Literal["arm64", "x86_64"]
+    ) -> OTAClientPayloadDescriptor | None:
+        for _descriptor in self.layers:
+            _annotations = _descriptor.annotations
+            if not _annotations:
+                continue
+            if (
+                _annotations.version == version
+                and _annotations.architecture == architecture
+            ):
+                return _descriptor
 
 
 class OTAClientPayloadDescriptor(OCIDescriptor):

@@ -13,3 +13,4 @@
 # limitations under the License.
 
 RST_MANIFEST_TABLE_NAME = "rs_manifest"
+RESOURCE_TABLE_FNAME = "resource_table.sqlite3"
