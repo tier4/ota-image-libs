@@ -50,6 +50,9 @@ dev = [
   "ruff",
 ]
 
+[tool.uv]
+required-version = ">=0.5.0,<0.9"
+
 #[tool.hatch.metadata.hooks.custom]
 #path = "scripts/hatch_build_lock_deps.py"
 
