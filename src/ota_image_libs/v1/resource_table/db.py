@@ -252,6 +252,8 @@ class PrepareResourceHelper:
             )
 
         def _gen():
+            # NOTE: only the resource we finally need will be placed to resource dir.
+            #       all other intermediates resources will be placed to download tmp.
             yield from self._prepare_resource(
                 target_entry, self._resource_dir / digest.hex()
             )
