@@ -2,13 +2,13 @@
 build-backend = "hatchling.build"
 requires = [
   "hatchling>=1.20",
+  "hatch-vcs~=0.5",
 ]
 
 [project]
 name = "ota-image-libs"
 description = "OTA Image Libraries and Tools."
-dynamic = ["optional-dependencies"]
-version = "0.0.38-dev0"
+dynamic = ["optional-dependencies", "version"]
 readme = "README.md"
 license = "Apache-2.0"
 license-files = [
@@ -52,6 +52,12 @@ dev = [
 
 #[tool.hatch.metadata.hooks.custom]
 #path = "scripts/hatch_build_lock_deps.py"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/ota_image_libs/_version.py"
 
 [tool.hatch.build.targets.sdist]
 exclude = [
