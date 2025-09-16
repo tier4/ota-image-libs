@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import random
 import sqlite3
 import threading
@@ -193,7 +194,7 @@ class PrepareResourceHelper:
         assert isinstance(entry.filter_applied, CompressFilter)
         compressed_rsid = entry.filter_applied.list_resource_id()
         compressed_entry = self._orm_pool.orm_select_entry(resource_id=compressed_rsid)
-        compressed_save_dst = self._tmp_dir / tmp_fname(str(compressed_rsid))
+        compressed_save_dst = self._download_dir / tmp_fname(str(compressed_rsid))
         yield from self._prepare_resource(compressed_entry, compressed_save_dst)
         try:
             recreate_zstd_compressed_resource(
@@ -210,22 +211,34 @@ class PrepareResourceHelper:
     ) -> Generator[tuple[str, Path]]:
         assert isinstance(entry.filter_applied, SliceFilter)
         slices_rsid = entry.filter_applied.list_resource_id()
-        _slices_fpath: list[Path] = []
+        _slices_fpaths: list[Path] = []
         for _rsid in slices_rsid:
             _slice_entry: ResourceTableManifest = self._orm_pool.orm_select_entry(
                 resource_id=_rsid
             )
-            _slice_save_dst = self._tmp_dir / tmp_fname(str(_rsid))
-            _slices_fpath.append(_slice_save_dst)
+            _slice_digest = _slice_entry.digest.hex()
+
+            _slice_save_tmp = self._download_dir / tmp_fname(str(_rsid))
+            _slice_save_dst = self._download_dir / _slice_digest
+            _slices_fpaths.append(_slice_save_dst)
+
             # NOTE: slice SHOULD NOT be filtered again, it MUST be the leaves in the resource
             #       filter applying tree.
             assert _slice_entry.filter_applied is None
-            yield (_slice_entry.digest.hex(), _slice_save_dst)
-        recreate_sliced_resource(entry, _slices_fpath, save_dst)
+            yield (_slice_digest, _slice_save_tmp)
+            os.rename(_slice_save_tmp, _slice_save_dst)
 
-        # after recovering the target resource, cleanup the slices
-        for _slice in _slices_fpath:
-            _slice.unlink(missing_ok=True)
+        try:
+            recreate_sliced_resource(entry, _slices_fpaths, save_dst)
+        except Exception as e:
+            logger.error(f"failed to recreate sliced resource, remove all slices: {e}")
+            raise
+        finally:
+            # after recovering the target resource, cleanup the slices.
+            # also, if combination failed, also cleanup the slices to let
+            #   otaclient does the downloading again.
+            for _slice in _slices_fpaths:
+                _slice.unlink(missing_ok=True)
 
     def _prepare_resource(
         self, entry: ResourceTableManifest, save_dst: Path
