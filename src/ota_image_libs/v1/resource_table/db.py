@@ -133,7 +133,7 @@ class PrepareResourceHelper:
     ):
         self._orm_pool = orm_pool
         self._resource_dir = resource_dir
-        self._tmp_dir = download_tmp_dir
+        self._download_dir = download_tmp_dir
 
         # for bundled entries, only allow one task to actually rebuild the bundle,
         self._bundle_process_lock = threading.Lock()
@@ -163,17 +163,29 @@ class PrepareResourceHelper:
     ) -> Generator[tuple[str, Path]]:
         assert isinstance(entry.filter_applied, BundleFilter)
         # NOTE: prevent the same bundle being prepared again and again
+        bundle_rsid = entry.filter_applied.list_resource_id()
         with self._bundle_process_lock:
-            bundle_rsid = entry.filter_applied.list_resource_id()
             if bundle_rsid not in self._bundle:
                 bundle_entry = self._orm_pool.orm_select_entry(resource_id=bundle_rsid)
                 logger.debug(f"Requesting bundle({bundle_rsid=}): {bundle_entry}")
-                bundle_save_dst = self._tmp_dir / tmp_fname(str(bundle_rsid))
-                yield from self._prepare_resource(bundle_entry, bundle_save_dst)
-                self._bundle[bundle_rsid] = bundle_save_dst
+                _bundle_save_tmp = self._download_dir / tmp_fname(str(bundle_rsid))
+                bundle_save_dst = self._download_dir / bundle_entry.digest.hex()
 
-        # NOTE: keep the bundle for later use
-        recreate_bundled_resource(entry, self._bundle[bundle_rsid], save_dst)
+                yield from self._prepare_resource(bundle_entry, _bundle_save_tmp)
+                os.replace(_bundle_save_tmp, bundle_save_dst)
+                self._bundle[bundle_rsid] = bundle_save_dst
+            bundle_fpath = self._bundle[bundle_rsid]
+
+        # NOTE: keep the bundle for later use, but if recreate from bundle failed, we delete the bundle
+        #       to let otaclient do the re-downloading.
+        try:
+            recreate_bundled_resource(entry, bundle_fpath, save_dst)
+        except Exception as e:
+            logger.error(
+                f"failed to get resource {entry} from bundle: {e}, remove the bundle!"
+            )
+            bundle_fpath.unlink(missing_ok=True)
+            raise
 
     def _prepare_compressed_resources(
         self, entry: ResourceTableManifest, save_dst: Path
