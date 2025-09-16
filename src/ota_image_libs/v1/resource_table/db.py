@@ -183,7 +183,8 @@ class PrepareResourceHelper:
             recreate_bundled_resource(entry, bundle_fpath, save_dst)
         except Exception as e:
             logger.error(
-                f"failed to get resource {entry} from bundle: {e}, remove the bundle!"
+                f"failed to get resource {entry} from bundle: {e}, remove the bundle!",
+                exc_info=e,
             )
             bundle_fpath.unlink(missing_ok=True)
             raise
@@ -194,33 +195,41 @@ class PrepareResourceHelper:
         assert isinstance(entry.filter_applied, CompressFilter)
         compressed_rsid = entry.filter_applied.list_resource_id()
         compressed_entry = self._orm_pool.orm_select_entry(resource_id=compressed_rsid)
-        compressed_save_dst = self._download_dir / tmp_fname(str(compressed_rsid))
-        yield from self._prepare_resource(compressed_entry, compressed_save_dst)
+
+        _compressed_save_tmp = self._download_dir / tmp_fname(str(compressed_rsid))
+        compressed_save_dst = self._download_dir / compressed_entry.digest.hex()
+        yield from self._prepare_resource(compressed_entry, _compressed_save_tmp)
+        os.rename(_compressed_save_tmp, compressed_save_dst)
+
         try:
             recreate_zstd_compressed_resource(
                 entry, compressed_save_dst, save_dst, dctx=self._thread_local_dctx
             )
         except Exception as e:
-            logger.error(f"Failure during decompressing: {entry}: {e}", exc_info=e)
+            logger.error(f"failure during decompressing: {entry}: {e}", exc_info=e)
             raise
+        finally:
+            compressed_save_dst.unlink(missing_ok=True)
 
-        compressed_save_dst.unlink(missing_ok=True)
-
-    def _prepare_slided_resources(
+    def _prepare_sliced_resources(
         self, entry: ResourceTableManifest, save_dst: Path
     ) -> Generator[tuple[str, Path]]:
         assert isinstance(entry.filter_applied, SliceFilter)
         slices_rsid = entry.filter_applied.list_resource_id()
-        _slices_fpaths: list[Path] = []
-        for _rsid in slices_rsid:
+        slices_fpaths: list[Path] = []
+        for _slice_rsid in slices_rsid:
             _slice_entry: ResourceTableManifest = self._orm_pool.orm_select_entry(
-                resource_id=_rsid
+                resource_id=_slice_rsid
             )
             _slice_digest = _slice_entry.digest.hex()
 
-            _slice_save_tmp = self._download_dir / tmp_fname(str(_rsid))
-            _slice_save_dst = self._download_dir / _slice_digest
-            _slices_fpaths.append(_slice_save_dst)
+            _slice_save_tmp = self._download_dir / tmp_fname(str(_slice_rsid))
+            # NOTE: in case when the slice is shared by multiple resources, we suffix
+            #       the resource_id to the fname.
+            _slice_save_dst = (
+                self._download_dir / f"{_slice_digest}_{entry.resource_id}"
+            )
+            slices_fpaths.append(_slice_save_dst)
 
             # NOTE: slice SHOULD NOT be filtered again, it MUST be the leaves in the resource
             #       filter applying tree.
@@ -229,15 +238,18 @@ class PrepareResourceHelper:
             os.rename(_slice_save_tmp, _slice_save_dst)
 
         try:
-            recreate_sliced_resource(entry, _slices_fpaths, save_dst)
+            recreate_sliced_resource(entry, slices_fpaths, save_dst)
         except Exception as e:
-            logger.error(f"failed to recreate sliced resource, remove all slices: {e}")
+            logger.error(
+                f"failed to recreate sliced resource, remove all slices: {e}",
+                exc_info=e,
+            )
             raise
         finally:
             # after recovering the target resource, cleanup the slices.
             # also, if combination failed, also cleanup the slices to let
             #   otaclient does the downloading again.
-            for _slice in _slices_fpaths:
+            for _slice in slices_fpaths:
                 _slice.unlink(missing_ok=True)
 
     def _prepare_resource(
@@ -251,7 +263,7 @@ class PrepareResourceHelper:
         elif isinstance(filter_applied, CompressFilter):
             yield from self._prepare_compressed_resources(entry, save_dst)
         elif isinstance(filter_applied, SliceFilter):
-            yield from self._prepare_slided_resources(entry, save_dst)
+            yield from self._prepare_sliced_resources(entry, save_dst)
         else:
             raise NotImplementedError
 
