@@ -195,16 +195,14 @@ class PrepareResourceHelper:
         slices_rsid = entry.filter_applied.list_resource_id()
         slices_fpaths: list[Path] = []
         for _slice_rsid in slices_rsid:
-            _slice_entry: ResourceTableManifest = self._orm_pool.orm_select_entry(
-                resource_id=_slice_rsid
-            )
-            _slice_digest = _slice_entry.digest.hex()
+            _slice_entry = self._orm_pool.orm_select_entry(resource_id=_slice_rsid)
+            _slice_digest = _slice_entry.digest
 
             _slice_save_tmp = self._download_dir / tmp_fname(str(_slice_rsid))
             # NOTE: in case when the slice is shared by multiple resources, we suffix
             #       the resource_id to the fname.
             _slice_save_dst = (
-                self._download_dir / f"{_slice_digest}_{entry.resource_id}"
+                self._download_dir / f"{_slice_digest.hex()}_{entry.resource_id}"
             )
             slices_fpaths.append(_slice_save_dst)
 
