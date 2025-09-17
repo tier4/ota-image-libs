@@ -82,7 +82,7 @@ class ResourceDownloadInfo:
 
 
 class PrepareResourceHelper:
-    """Helper for processing resouces.
+    """Helper for processing resources.
 
     This class is for multi-threads use.
     """
