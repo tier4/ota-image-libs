@@ -18,13 +18,15 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Optional
 
 import zstandard
 
 from ota_image_libs._resource_filter import BundleFilter, CompressFilter, SliceFilter
 from ota_image_libs.common import tmp_fname
+from ota_image_libs.v1.consts import SUPPORTED_COMPRESSION_ALG
 
 from .db import ResourceTableORMPool
 from .schema import ResourceTableManifest
@@ -70,6 +72,16 @@ def recreate_zstd_compressed_resource(
     os.replace(tmp_save_dst, save_dst)
 
 
+@dataclass
+class ResourceDownloadInfo:
+    digest: bytes
+    size: int
+    save_dst: Path
+    compression_alg: Optional[str] = None
+    compressed_origin_digest: Optional[bytes] = None
+    compressed_origin_size: Optional[int] = None
+
+
 class PrepareResourceHelper:
     """Helper for processing resouces.
 
@@ -112,7 +124,7 @@ class PrepareResourceHelper:
 
     def _prepare_bundled_resource(
         self, entry: ResourceTableManifest, save_dst: Path
-    ) -> Generator[tuple[str, Path]]:
+    ) -> Generator[ResourceDownloadInfo]:
         assert isinstance(entry.filter_applied, BundleFilter)
         # NOTE: prevent the same bundle being prepared again and again
         bundle_rsid = entry.filter_applied.list_resource_id()
@@ -124,7 +136,7 @@ class PrepareResourceHelper:
                 bundle_save_dst = self._download_dir / bundle_entry.digest.hex()
 
                 yield from self._prepare_resource(bundle_entry, _bundle_save_tmp)
-                os.replace(_bundle_save_tmp, bundle_save_dst)
+                os.rename(_bundle_save_tmp, bundle_save_dst)
                 self._bundle[bundle_rsid] = bundle_save_dst
             bundle_fpath = self._bundle[bundle_rsid]
 
@@ -142,29 +154,42 @@ class PrepareResourceHelper:
 
     def _prepare_compressed_resources(
         self, entry: ResourceTableManifest, save_dst: Path
-    ) -> Generator[tuple[str, Path]]:
+    ) -> Generator[ResourceDownloadInfo]:
         assert isinstance(entry.filter_applied, CompressFilter)
         compressed_rsid = entry.filter_applied.list_resource_id()
         compressed_entry = self._orm_pool.orm_select_entry(resource_id=compressed_rsid)
 
-        _compressed_save_tmp = self._download_dir / tmp_fname(str(compressed_rsid))
-        compressed_save_dst = self._download_dir / compressed_entry.digest.hex()
-        yield from self._prepare_resource(compressed_entry, _compressed_save_tmp)
-        os.rename(_compressed_save_tmp, compressed_save_dst)
-
-        try:
-            recreate_zstd_compressed_resource(
-                entry, compressed_save_dst, save_dst, dctx=self._thread_local_dctx
+        # NOTE(20250917): if the compressed entry is not sliced, we directly tell the upper
+        #                 caller to decompress on-the-fly during downloading.
+        if compressed_entry.filter_applied is None:
+            yield ResourceDownloadInfo(
+                digest=compressed_entry.digest,
+                size=compressed_entry.size,
+                save_dst=save_dst,
+                compression_alg=SUPPORTED_COMPRESSION_ALG,
+                compressed_origin_digest=entry.digest,
+                compressed_origin_size=entry.size,
             )
-        except Exception as e:
-            logger.error(f"failure during decompressing: {entry}: {e}", exc_info=e)
-            raise
-        finally:
-            compressed_save_dst.unlink(missing_ok=True)
+        # if the compressed entry is sliced, we still need to first recover from slices
+        else:
+            _compressed_save_tmp = self._download_dir / tmp_fname(str(compressed_rsid))
+            compressed_save_dst = self._download_dir / compressed_entry.digest.hex()
+            yield from self._prepare_resource(compressed_entry, _compressed_save_tmp)
+            os.rename(_compressed_save_tmp, compressed_save_dst)
+
+            try:
+                recreate_zstd_compressed_resource(
+                    entry, compressed_save_dst, save_dst, dctx=self._thread_local_dctx
+                )
+            except Exception as e:
+                logger.error(f"failure during decompressing: {entry}: {e}", exc_info=e)
+                raise
+            finally:
+                compressed_save_dst.unlink(missing_ok=True)
 
     def _prepare_sliced_resources(
         self, entry: ResourceTableManifest, save_dst: Path
-    ) -> Generator[tuple[str, Path]]:
+    ) -> Generator[ResourceDownloadInfo]:
         assert isinstance(entry.filter_applied, SliceFilter)
         slices_rsid = entry.filter_applied.list_resource_id()
         slices_fpaths: list[Path] = []
@@ -185,7 +210,11 @@ class PrepareResourceHelper:
             # NOTE: slice SHOULD NOT be filtered again, it MUST be the leaves in the resource
             #       filter applying tree.
             assert _slice_entry.filter_applied is None
-            yield (_slice_digest, _slice_save_tmp)
+            yield ResourceDownloadInfo(
+                digest=_slice_entry.digest,
+                size=_slice_entry.size,
+                save_dst=_slice_save_tmp,
+            )
             os.rename(_slice_save_tmp, _slice_save_dst)
 
         try:
@@ -205,10 +234,14 @@ class PrepareResourceHelper:
 
     def _prepare_resource(
         self, entry: ResourceTableManifest, save_dst: Path
-    ) -> Generator[tuple[str, Path]]:
+    ) -> Generator[ResourceDownloadInfo]:
         filter_applied = entry.filter_applied
         if filter_applied is None:  # reaching the leaf
-            yield (entry.digest.hex(), save_dst)
+            yield ResourceDownloadInfo(
+                digest=entry.digest,
+                size=entry.size,
+                save_dst=save_dst,
+            )
         elif isinstance(filter_applied, BundleFilter):
             yield from self._prepare_bundled_resource(entry, save_dst)
         elif isinstance(filter_applied, CompressFilter):
@@ -220,7 +253,7 @@ class PrepareResourceHelper:
 
     def prepare_resource_at_thread(
         self, digest: bytes
-    ) -> tuple[ResourceTableManifest, Generator[tuple[str, Path]]]:
+    ) -> tuple[ResourceTableManifest, Generator[ResourceDownloadInfo]]:
         """Prepare resource for the given digest.
 
         NOTE that the `resource_id` in the resource_table is NOT the same as
