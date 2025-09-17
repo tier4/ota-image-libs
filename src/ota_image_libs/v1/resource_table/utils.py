@@ -26,7 +26,6 @@ import zstandard
 
 from ota_image_libs._resource_filter import BundleFilter, CompressFilter, SliceFilter
 from ota_image_libs.common import tmp_fname
-from ota_image_libs.v1.consts import SUPPORTED_COMPRESSION_ALG
 
 from .db import ResourceTableORMPool
 from .schema import ResourceTableManifest
@@ -155,8 +154,10 @@ class PrepareResourceHelper:
     def _prepare_compressed_resources(
         self, entry: ResourceTableManifest, save_dst: Path
     ) -> Generator[ResourceDownloadInfo]:
-        assert isinstance(entry.filter_applied, CompressFilter)
-        compressed_rsid = entry.filter_applied.list_resource_id()
+        _filter_applied = entry.filter_applied
+        assert isinstance(_filter_applied, CompressFilter)
+
+        compressed_rsid = _filter_applied.list_resource_id()
         compressed_entry = self._orm_pool.orm_select_entry(resource_id=compressed_rsid)
 
         # NOTE(20250917): if the compressed entry is not sliced, we directly tell the upper
@@ -166,7 +167,7 @@ class PrepareResourceHelper:
                 digest=compressed_entry.digest,
                 size=compressed_entry.size,
                 save_dst=save_dst,
-                compression_alg=SUPPORTED_COMPRESSION_ALG,
+                compression_alg=_filter_applied.compression_alg,
                 compressed_origin_digest=entry.digest,
                 compressed_origin_size=entry.size,
             )
