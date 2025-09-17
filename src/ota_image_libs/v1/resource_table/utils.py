@@ -135,7 +135,7 @@ class PrepareResourceHelper:
                 bundle_save_dst = self._download_dir / bundle_entry.digest.hex()
 
                 yield from self._prepare_resource(bundle_entry, _bundle_save_tmp)
-                os.rename(_bundle_save_tmp, bundle_save_dst)
+                os.replace(_bundle_save_tmp, bundle_save_dst)
                 self._bundle[bundle_rsid] = bundle_save_dst
             bundle_fpath = self._bundle[bundle_rsid]
 
@@ -176,7 +176,7 @@ class PrepareResourceHelper:
             _compressed_save_tmp = self._download_dir / tmp_fname(str(compressed_rsid))
             compressed_save_dst = self._download_dir / compressed_entry.digest.hex()
             yield from self._prepare_resource(compressed_entry, _compressed_save_tmp)
-            os.rename(_compressed_save_tmp, compressed_save_dst)
+            os.replace(_compressed_save_tmp, compressed_save_dst)
 
             try:
                 recreate_zstd_compressed_resource(
@@ -216,7 +216,7 @@ class PrepareResourceHelper:
                 size=_slice_entry.size,
                 save_dst=_slice_save_tmp,
             )
-            os.rename(_slice_save_tmp, _slice_save_dst)
+            os.replace(_slice_save_tmp, _slice_save_dst)
 
         try:
             recreate_sliced_resource(entry, slices_fpaths, save_dst)
