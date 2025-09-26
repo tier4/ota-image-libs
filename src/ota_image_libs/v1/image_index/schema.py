@@ -39,6 +39,8 @@ from ota_image_libs.v1.annotation_keys import (
     PILOT_AUTO_PROJECT_VERSION,
     WEB_AUTO_CATALOG,
     WEB_AUTO_CATALOG_ID,
+    WEB_AUTO_CICD_RELEASE_ID,
+    WEB_AUTO_CICD_RELEASE_NAME,
     WEB_AUTO_ENV,
     WEB_AUTO_PROJECT,
     WEB_AUTO_PROJECT_ID,
@@ -78,6 +80,8 @@ class ImageIndex(MetaFileBase):
         web_auto_catalog: Union[str, None] = Field(alias=WEB_AUTO_CATALOG, default=None)
         web_auto_catalog_id: Union[str, None] = Field(alias=WEB_AUTO_CATALOG_ID, default=None)
         web_auto_env: Union[str, None] = Field(alias=WEB_AUTO_ENV, default=None)
+        web_auto_cicd_release_id: Union[str, None] = Field(alias=WEB_AUTO_CICD_RELEASE_ID, default=None)
+        web_auto_cicd_release_name: Union[str, None] = Field(alias=WEB_AUTO_CICD_RELEASE_NAME, default=None)
         # fmt: on
 
     SchemaVersion = SchemaVersion[2]
