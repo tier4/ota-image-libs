@@ -74,15 +74,23 @@ Except for explictly stated, the required annotations SHOULD be provided by the 
 
 - **`vnd.tier4.web-auto.env`** *string*
 
-  OPTIONAL. The web-auto environment name, like `dev`, `stg`, `prd`.
+  OPTIONAL, recommended. The web-auto environment name, like `dev`, `stg`, `prd`.
+
+- **`vnd.tier4.web-auto.cicd.release-id`** *string*
+
+  OPTIONAL, recommended. The release ID for this build on the evaluator firmware release.
+
+- **`vnd.tier4.web-auto.cicd.release-name`** *string*
+
+  OPTIONAL, recommended. The release display name for this build on the evaluator firmware release.
 
 - **`vnd.tier4.pilot-auto.platform.ecu.hardware-model`** *string*
 
-  OPTIONAL. The hardware model of the ECU.
+  OPTIONAL, recommended. The hardware model of the ECU. This information should be provided by the user.
 
 - **`vnd.tier4.pilot-auto.platform.ecu.hardware-series`** *string*
 
-  OPTIONAL. The hardware series of the ECU.
+  OPTIONAL, recommended. The hardware series of the ECU. This information should be provided by the user.
 
 - **`vnd.tier4.image.os`** *string*
   OPTIONAL, recommended. The operating system of the original system rootfs image, like `Ubuntu`, `Debian`, etc.
