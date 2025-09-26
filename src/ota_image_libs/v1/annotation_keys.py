@@ -34,6 +34,8 @@ WEB_AUTO_PROJECT = "vnd.tier4.web-auto.project"
 WEB_AUTO_PROJECT_ID = "vnd.tier4.web-auto.project-id"
 WEB_AUTO_CATALOG = "vnd.tier4.web-auto.catalog"
 WEB_AUTO_CATALOG_ID = "vnd.tier4.web-auto.catalog-id"
+WEB_AUTO_CICD_RELEASE_ID = "vnd.tier4.web-auto.cicd.release-id"
+WEB_AUTO_CICD_RELEASE_NAME = "vnd.tier4.web-auto.cicd.release-name"
 
 #
 # ------ OTA related ------ #
