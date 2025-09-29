@@ -45,13 +45,25 @@ class Sha256Digest:
     SHA256_ALG = "sha256"
     sha256_impl = staticmethod(sha256)
 
-    def __init__(self, _digest: str):
-        self._digest = _digest
-        self._digest_bytes = bytes.fromhex(_digest)
+    def __init__(self, _digest: str | bytes):
+        if isinstance(_digest, str):
+            self._digest_hex = _digest
+            self._digest_bytes = bytes.fromhex(_digest)
+        else:
+            self._digest_bytes = _digest
+            self._digest_hex = _digest.hex()
+
+    def __hash__(self) -> int:
+        return int.from_bytes(self._digest_bytes, byteorder="big")
+
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, self.__class__):
+            return False
+        return self.digest == value.digest
 
     @property
     def digest_hex(self) -> str:
-        return self._digest
+        return self._digest_hex
 
     @property
     def digest(self) -> bytes:
@@ -63,12 +75,12 @@ class Sha256Digest:
             return data
         if isinstance(data, str):
             _alg, _digest_hex = data.split(":", maxsplit=1)
-            assert _alg == cls.SHA256_ALG, "unsupported digest algorithm"
+            assert _alg == cls.SHA256_ALG, "Not a sha256 digest"
             return cls(_digest_hex)
         raise ValueError(f"invalid {type(data)=}")
 
     def _to_str_serializer(self) -> str:
-        return f"{self.SHA256_ALG}:{self._digest}"
+        return f"{self.SHA256_ALG}:{self._digest_hex}"
 
     def __str__(self):
         return self._to_str_serializer()
