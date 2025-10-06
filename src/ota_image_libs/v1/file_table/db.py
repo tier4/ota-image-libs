@@ -19,7 +19,7 @@ import sqlite3
 import typing
 from contextlib import closing
 from pathlib import Path
-from typing import Callable, Generator, Optional, TypedDict, cast
+from typing import Callable, Generator, Optional
 
 from simple_sqlite3_orm import (
     AsyncORMBase,
@@ -27,6 +27,8 @@ from simple_sqlite3_orm import (
     CreateTableParams,
     ORMBase,
     ORMThreadPoolBase,
+    TableSpec,
+    TypeAffinityRepr,
     gen_sql_stmt,
 )
 from simple_sqlite3_orm.utils import (
@@ -35,6 +37,7 @@ from simple_sqlite3_orm.utils import (
     enable_wal_mode,
     lookup_table,
 )
+from typing_extensions import Annotated
 
 from ota_image_libs.common.model_spec import MsgPackedDict, StrOrPath
 from ota_image_libs.v1.media_types import OTA_IMAGE_FILETABLE
@@ -197,36 +200,39 @@ class AsyncFileTableResourceORMPool(
 #
 # ------ Helper for operating the file_table DB ------ #
 #
+# NOTE: although we define each helper classes as tables,
+#       we only need the serialization feature, not actually
+#       to create database against the table defs.
 
 
-class _FileTableEntryTypedDict(TypedDict):
+class _FileTableEntry(TableSpec):
     """The result of joining ft_inode and ft_* table."""
 
     path: str
     uid: int
     gid: int
     mode: int
-    links_count: Optional[int]
-    xattrs: Optional[MsgPackedDict]
+    links_count: Optional[int] = None
+    xattrs: Annotated[Optional[MsgPackedDict], TypeAffinityRepr(bytes)] = None
 
 
-class RegularFileTypedDict(_FileTableEntryTypedDict):
+class RegularFileRow(_FileTableEntry):
     digest: bytes
     size: int
     inode_id: int
-    contents: Optional[bytes]
+    contents: Optional[bytes] = None
 
 
-class NonRegularFileTypedDict(_FileTableEntryTypedDict):
-    meta: Optional[bytes]
+class NonRegularFileRow(_FileTableEntry):
+    meta: Optional[bytes] = None
 
 
-class DirTypedDict(TypedDict):
+class DirRow(TableSpec):
     path: str
     uid: int
     gid: int
     mode: int
-    xattrs: Optional[MsgPackedDict]
+    xattrs: Annotated[Optional[MsgPackedDict], TypeAffinityRepr(bytes)] = None
 
 
 DB_TIMEOUT = 16  # seconds
@@ -290,13 +296,11 @@ class FileTableDBHelper:
                 _stmt=stmt,
             )
 
-    def iter_dir_entries(self) -> Generator[DirTypedDict]:
+    def iter_dir_entries(self) -> Generator[DirRow]:
         with FileTableDirORM(self.connect_fstable_db()) as orm:
-            _row_factory = typing.cast(Callable[..., DirTypedDict], sqlite3.Row)
-
             # fmt: off
             yield from orm.orm_select_entries(
-                _row_factory=_row_factory,
+                _row_factory=DirRow.table_row_factory2,
                 _stmt = gen_sql_stmt(
                     "SELECT", "path,uid,gid,mode,xattrs",
                     "FROM", FT_DIR_TABLE_NAME,
@@ -305,33 +309,30 @@ class FileTableDBHelper:
             )
             # fmt: on
 
-    def iter_regular_entries(self) -> Generator[RegularFileTypedDict]:
+    def iter_regular_entries(self) -> Generator[RegularFileRow]:
         with FileTableRegularORM(self.connect_fstable_db()) as orm:
             # fmt: off
-            _stmt = gen_sql_stmt(
-                "SELECT", "path,uid,gid,mode,links_count,xattrs,digest,size,contents,inode_id",
-                "FROM", FT_REGULAR_TABLE_NAME,
-                "JOIN", FT_INODE_TABLE_NAME, "USING(inode_id)",
-                "JOIN", FT_RESOURCE_TABLE_NAME, "USING(resource_id)",
+            yield from orm.orm_select_entries(
+                    _stmt=gen_sql_stmt(
+                    "SELECT", "path,uid,gid,mode,links_count,xattrs,digest,size,contents,inode_id",
+                    "FROM", FT_REGULAR_TABLE_NAME,
+                    "JOIN", FT_INODE_TABLE_NAME, "USING(inode_id)",
+                    "JOIN", FT_RESOURCE_TABLE_NAME, "USING(resource_id)",
+                ),
+                _row_factory=RegularFileRow.table_row_factory2,
             )
             # fmt: on
-            yield from orm.orm_select_entries(
-                _stmt=_stmt,
-                _row_factory=cast("Callable[..., RegularFileTypedDict]", sqlite3.Row),
-            )
 
-    def iter_non_regular_entries(self) -> Generator[NonRegularFileTypedDict]:
+    def iter_non_regular_entries(self) -> Generator[NonRegularFileRow]:
         with FileTableNonRegularORM(self.connect_fstable_db()) as orm:
             # fmt: off
             yield from orm.orm_select_entries(
-                _row_factory=typing.cast(
-                    Callable[..., NonRegularFileTypedDict], sqlite3.Row
-                ),
                 _stmt=gen_sql_stmt(
                     "SELECT", "path,uid,gid,mode,xattrs,meta",
                     "FROM", FT_NON_REGULAR_TABLE_NAME,
                     "JOIN", FT_INODE_TABLE_NAME, "USING(inode_id)",
-                )
+                ),
+                _row_factory=NonRegularFileRow.table_row_factory2,
             )
             # fmt: on
 
