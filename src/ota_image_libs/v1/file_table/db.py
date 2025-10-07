@@ -21,6 +21,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Callable, Generator, Optional
 
+from pydantic import SkipValidation
 from simple_sqlite3_orm import (
     AsyncORMBase,
     CreateIndexParams,
@@ -208,30 +209,30 @@ class AsyncFileTableResourceORMPool(
 class _FileTableEntry(TableSpec):
     """The result of joining ft_inode and ft_* table."""
 
-    path: str
-    uid: int
-    gid: int
-    mode: int
-    links_count: Optional[int] = None
+    path: Annotated[str, SkipValidation]
+    uid: Annotated[int, SkipValidation]
+    gid: Annotated[int, SkipValidation]
+    mode: Annotated[int, SkipValidation]
+    links_count: Annotated[Optional[int], SkipValidation] = None
     xattrs: Annotated[Optional[MsgPackedDict], TypeAffinityRepr(bytes)] = None
 
 
 class RegularFileRow(_FileTableEntry):
-    digest: bytes
-    size: int
-    inode_id: int
-    contents: Optional[bytes] = None
+    digest: Annotated[bytes, SkipValidation]
+    size: Annotated[int, SkipValidation]
+    inode_id: Annotated[int, SkipValidation]
+    contents: Annotated[Optional[bytes], SkipValidation] = None
 
 
 class NonRegularFileRow(_FileTableEntry):
-    meta: Optional[bytes] = None
+    meta: Annotated[Optional[bytes], SkipValidation] = None
 
 
 class DirRow(TableSpec):
-    path: str
-    uid: int
-    gid: int
-    mode: int
+    path: Annotated[str, SkipValidation]
+    uid: Annotated[int, SkipValidation]
+    gid: Annotated[int, SkipValidation]
+    mode: Annotated[int, SkipValidation]
     xattrs: Annotated[Optional[MsgPackedDict], TypeAffinityRepr(bytes)] = None
 
 
