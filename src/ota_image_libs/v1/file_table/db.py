@@ -201,7 +201,7 @@ class AsyncFileTableResourceORMPool(
 # ------ Helper for operating the file_table DB ------ #
 #
 # NOTE: although we define each helper classes as tables,
-#       we only need the serialization feature, not actually
+#       we only need the de-serialization feature, not actually
 #       to create database against the table defs.
 
 
