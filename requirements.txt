@@ -1,0 +1,10 @@
+# Automatically generated from pyproject.toml by gen_requirements_txt.py script.
+# DO NOT EDIT! Only for reference use.
+cryptography>=45.0,<47
+msgpack>=1.1,<2
+pydantic>=2.10,<3
+pyjwt>=2.9.0,<3
+pyyaml>=6.0.1,<7
+simple-sqlite3-orm>=0.12,<1
+typing-extensions>=4.6.3
+zstandard>=0.22,<0.26
