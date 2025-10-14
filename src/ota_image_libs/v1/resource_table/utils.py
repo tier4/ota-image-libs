@@ -224,31 +224,30 @@ class PrepareResourceHelper:
                 compressed_origin_digest=entry.digest,
                 compressed_origin_size=entry.size,
             )
-        # if the compressed entry is sliced, we still need to first recover from slices
-        else:
-            _compressed_save_tmp = self._download_dir / tmp_fname(str(compressed_rsid))
-            compressed_save_dst = self._download_dir / compressed_digest.hex()
-            if (
-                not compressed_save_dst.is_file()
-                or file_sha256(compressed_save_dst).digest() != compressed_digest
-            ):
-                yield from self._prepare_resource(
-                    compressed_entry, _compressed_save_tmp
-                )
-                os.replace(_compressed_save_tmp, compressed_save_dst)
+            return
 
-            try:
-                recreate_zstd_compressed_resource(
-                    entry,
-                    compressed_save_dst,
-                    save_dst,
-                    dctx=self._thread_local_dctx,
-                )
-            except Exception as e:
-                _err_msg = f"failure during decompressing: {entry}: {e}"
-                raise CompressedRecreateFailed(_err_msg) from e
-            finally:
-                compressed_save_dst.unlink(missing_ok=True)
+        # if the compressed entry is sliced, we still need to first recover from slices
+        compressed_save_dst = self._download_dir / compressed_digest.hex()
+        if (
+            not compressed_save_dst.is_file()
+            or file_sha256(compressed_save_dst).digest() != compressed_digest
+        ):
+            _compressed_save_tmp = self._download_dir / tmp_fname(str(compressed_rsid))
+            yield from self._prepare_resource(compressed_entry, _compressed_save_tmp)
+            os.replace(_compressed_save_tmp, compressed_save_dst)
+
+        try:
+            recreate_zstd_compressed_resource(
+                entry,
+                compressed_save_dst,
+                save_dst,
+                dctx=self._thread_local_dctx,
+            )
+        except Exception as e:
+            _err_msg = f"failure during decompressing: {entry}: {e}"
+            raise CompressedRecreateFailed(_err_msg) from e
+        finally:
+            compressed_save_dst.unlink(missing_ok=True)
 
     def _prepare_sliced_resources(
         self, entry: ResourceTableManifest, save_dst: Path
