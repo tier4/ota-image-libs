@@ -376,11 +376,11 @@ class ResumeOTADownloadHelper:
         self,
         _fpath: Path,
         _digest: bytes,
-        _target_slice_id: str,
+        _sliced_target_rsid: str,
     ) -> None:
         try:
-            if _target_slice_id and not self._rst_orm_pool.orm_check_entry_exist(
-                resource_id=_target_slice_id
+            if _sliced_target_rsid and not self._rst_orm_pool.orm_check_entry_exist(
+                resource_id=int(_sliced_target_rsid)
             ):
                 return remove_file(_fpath)
 
@@ -413,7 +413,7 @@ class ResumeOTADownloadHelper:
                 # NOTE: for slice, a suffix will be appended to the filename.
                 _digest_hex = entry_fname[:SHA256DIGEST_HEX_LEN]
                 # see L289, a slice will be named as <slice_digest>_<target_resouce_id>
-                _target_rsid = entry_fname[SHA256DIGEST_HEX_LEN + 1 :]
+                _sliced_target_rsid = entry_fname[SHA256DIGEST_HEX_LEN + 1 :]
                 try:
                     _digest = bytes.fromhex(_digest_hex)
                 except Exception:
@@ -426,6 +426,6 @@ class ResumeOTADownloadHelper:
                     self._check_one_resource_at_thread,
                     Path(entry.path),
                     _digest,
-                    _target_rsid,
+                    _sliced_target_rsid,
                 )
         return _count
