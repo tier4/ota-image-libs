@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import shutil
 import sys
 from functools import partial
 from pathlib import Path
@@ -68,3 +69,14 @@ def cal_file_digest(
 
 file_sha256 = partial(cal_file_digest, digest=hashlib.sha256)
 file_sha256.__doc__ = "Generate file digest with sha256."
+
+
+def remove_file(_fpath: Path, *, ignore_error: bool = True) -> None:
+    """Use proper way to remove <_fpath>."""
+    try:
+        _fpath.unlink(missing_ok=True)
+    except IsADirectoryError:
+        return shutil.rmtree(_fpath, ignore_errors=ignore_error)
+    except Exception:
+        if not ignore_error:
+            raise
