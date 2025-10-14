@@ -129,6 +129,22 @@ class PrepareResourceHelper:
             self._thread_local.dctx = dctx
             return dctx
 
+    def _prepare_bundle(self, _bundle_entry: ResourceTableManifest):
+        _bundle_f = self._resource_dir / _bundle_entry.digest.hex()
+        # try to re-use already prepared bundle file resource
+        if (
+            _bundle_f.is_file()
+            and file_sha256(_bundle_f).digest() == _bundle_entry.digest
+        ):
+            return
+
+        _bundle_save_tmp = self._download_dir / tmp_fname(
+            str(_bundle_entry.resource_id)
+        )
+        yield from self._prepare_resource(_bundle_entry, _bundle_save_tmp)
+        # unconditionally override the previous file
+        os.replace(_bundle_save_tmp, _bundle_f)
+
     def _prepare_bundled_resource(
         self, entry: ResourceTableManifest, save_dst: Path
     ) -> Generator[ResourceDownloadInfo]:
@@ -159,20 +175,8 @@ class PrepareResourceHelper:
 
             if _bundle_prepare_lock.acquire(blocking=False):
                 try:
-                    # try to re-use already prepared bundle file resource
-                    if (
-                        not _bundle_f.is_file()
-                        or file_sha256(_bundle_f).digest() != _bundle_entry.digest
-                    ):
-                        _bundle_f.unlink(missing_ok=True)
-                        _bundle_save_tmp = self._download_dir / tmp_fname(
-                            str(bundle_rsid)
-                        )
-                        yield from self._prepare_resource(
-                            _bundle_entry, _bundle_save_tmp
-                        )
-                        os.replace(_bundle_save_tmp, _bundle_f)
-                        _bundle_ready_event.set()
+                    yield from self._prepare_bundle(_bundle_entry)
+                    _bundle_ready_event.set()
                     break
                 except Exception as e:
                     raise BundledRecreateFailed(
