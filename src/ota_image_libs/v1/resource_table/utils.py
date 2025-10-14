@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Generator, Optional
@@ -27,9 +28,9 @@ from typing_extensions import TypeAlias
 
 from ota_image_libs._resource_filter import BundleFilter, CompressFilter, SliceFilter
 from ota_image_libs.common import tmp_fname
-from ota_image_libs.common.io import file_sha256
+from ota_image_libs.common.io import file_sha256, remove_file
 
-from .db import ResourceTableORMPool
+from .db import ResourceTableDBHelper, ResourceTableORMPool
 from .schema import ResourceTableManifest
 
 # totally a worker thread will wait for 18 seconds
@@ -353,3 +354,78 @@ class PrepareResourceHelper:
             )
 
         return target_entry, _gen()
+
+
+SHA256DIGEST_HEX_LEN = 64
+
+
+class ResumeOTADownloadHelper:
+    def __init__(
+        self,
+        download_dir: Path,
+        rst_helper: ResourceTableDBHelper,
+        *,
+        max_concurrent: int,
+        db_conn_num: int = 1,  # serialize accessing
+    ) -> None:
+        self._download_dir = download_dir
+        self._rst_orm_pool = rst_helper.get_orm_pool(db_conn_num)
+        self._se = threading.Semaphore(max_concurrent)
+
+    def _check_one_resource_at_thread(
+        self,
+        _fpath: Path,
+        _digest: bytes,
+        _target_slice_id: str,
+    ) -> None:
+        try:
+            if _target_slice_id and not self._rst_orm_pool.orm_check_entry_exist(
+                resource_id=_target_slice_id
+            ):
+                return remove_file(_fpath)
+
+            if (
+                not self._rst_orm_pool.orm_check_entry_exist(digest=_digest)
+                or file_sha256(_fpath).digest() != _digest
+            ):
+                return remove_file(_fpath)
+        except Exception:
+            remove_file(_fpath)
+        finally:
+            self._se.release()
+
+    def check_download_dir(self) -> int:
+        """Scan through OTA download dir and try to recover resources."""
+        _count = 0
+        with ThreadPoolExecutor(
+            thread_name_prefix="resume_ota_download"
+        ) as pool, os.scandir(self._download_dir) as it:
+            for entry in it:
+                if (
+                    not entry.is_file(follow_symlinks=False)
+                    or len(entry.name) < SHA256DIGEST_HEX_LEN
+                    or entry.name.startswith("tmp")
+                ):
+                    remove_file(Path(entry.path))
+                    continue
+
+                entry_fname = entry.name
+                # NOTE: for slice, a suffix will be appended to the filename.
+                _digest_hex = entry_fname[:SHA256DIGEST_HEX_LEN]
+                # see L289, a slice will be named as <slice_digest>_<target_resouce_id>
+                _target_rsid = entry_fname[SHA256DIGEST_HEX_LEN + 1 :]
+                try:
+                    _digest = bytes.fromhex(_digest_hex)
+                except Exception:
+                    remove_file(Path(entry.path))
+                    continue
+
+                self._se.acquire()
+                _count += 1
+                pool.submit(
+                    self._check_one_resource_at_thread,
+                    Path(entry.path),
+                    _digest,
+                    _target_rsid,
+                )
+        return _count
