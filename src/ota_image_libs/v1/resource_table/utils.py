@@ -30,6 +30,8 @@ from ota_image_libs.common import tmp_fname
 from .db import ResourceTableORMPool
 from .schema import ResourceTableManifest
 
+MAX_WAIT_FOR_BUNDLE_TIMEOUT = 30  # seconds
+
 
 class BundledRecreateFailed(Exception): ...
 
@@ -78,8 +80,10 @@ class ResourceDownloadInfo:
     compressed_origin_size: Optional[int] = None
 
 
+PerBundleLock: TypeAlias = threading.Lock
+BundleReadyEvent: TypeAlias = threading.Event
 BundleRecord: TypeAlias = (
-    "tuple[ResourceTableManifest, threading.Lock, threading.Event]"
+    "tuple[ResourceTableManifest, PerBundleLock, BundleReadyEvent]"
 )
 
 
@@ -136,42 +140,48 @@ class PrepareResourceHelper:
                 _bundle_entry = self._orm_pool.orm_select_entry(resource_id=bundle_rsid)
                 self._bundle_per_locks[bundle_rsid] = (
                     _bundle_entry,
-                    _bundle_prepare_lock := threading.Lock(),
-                    _bundle_ready_event := threading.Event(),
+                    _bundle_prepare_lock := PerBundleLock(),
+                    _bundle_ready_event := BundleReadyEvent(),
                 )
             else:
                 _bundle_entry, _bundle_prepare_lock, _bundle_ready_event = _bundle_info
 
         _bundle_f = self._resource_dir / _bundle_entry.digest.hex()
+        # only trigger upper to download resources when _bundle_ready_event is not set.
         if not _bundle_ready_event.is_set():
             # ensure only one thread is preparing the bundle file
-            if _bundle_prepare_lock.acquire():
+            if _bundle_prepare_lock.acquire(blocking=False):
                 try:
                     _bundle_save_tmp = self._download_dir / tmp_fname(str(bundle_rsid))
-                    bundle_save_dst = self._download_dir / _bundle_entry.digest.hex()
-
                     yield from self._prepare_resource(_bundle_entry, _bundle_save_tmp)
-                    os.replace(_bundle_save_tmp, bundle_save_dst)
+                    os.replace(_bundle_save_tmp, _bundle_f)
                     _bundle_ready_event.set()
                 finally:
                     _bundle_prepare_lock.release()
             else:
-                _bundle_ready_event.wait()
+                if not _bundle_ready_event.wait(MAX_WAIT_FOR_BUNDLE_TIMEOUT):
+                    raise BundledRecreateFailed(
+                        f"timeout waiting for {_bundle_entry} being prepared, will retry"
+                    )
 
-        # NOTE: keep the bundle for later use, but if recreate from bundle failed, we delete the bundle
-        #       to let otaclient do the re-downloading.
+        # NOTE: keep the bundle for later use, but if recreate from bundle failed,
+        #       we clear the _bundle_ready_event and raise exception to upper to
+        #       trigger a re-downloading of the resources.
         try:
             with open(_bundle_f, "rb") as src, open(save_dst, "wb") as dst:
                 src.seek(filter_cfg.offset)
                 dst.write(src.read(filter_cfg.len))
         except Exception as e:
+            # use a new _bundle_ready_event to identify next downloaded bundle
+            with self._bundle_process_lock:
+                self._bundle_per_locks[bundle_rsid] = (
+                    _bundle_entry,
+                    _bundle_prepare_lock,
+                    BundleReadyEvent(),
+                )
+            # clear this bundle's ready event
             _bundle_ready_event.clear()
-            if isinstance(e, FileNotFoundError):
-                raise BundledRecreateFailed(
-                    f"bundle {_bundle_entry} not found, might be caused by previous failed extraction"
-                ) from e
 
-            _bundle_f.unlink(missing_ok=True)
             raise BundledRecreateFailed(
                 f"failed to extract {entry} from bundle {_bundle_entry}: {e!r}"
             ) from e
