@@ -32,7 +32,10 @@ from ota_image_libs.common.io import file_sha256
 from .db import ResourceTableORMPool
 from .schema import ResourceTableManifest
 
-MAX_WAIT_FOR_BUNDLE_TIMEOUT = 16  # seconds
+# totally a worker thread will wait for 18 seconds
+#   for the bundle to be prepared.
+MAX_ITERS_FOR_WAITING_BUNDLE = 6  # seconds
+WAITING_BUNDLE_INTERVAL = 3
 
 
 class BundledRecreateFailed(Exception): ...
@@ -129,8 +132,9 @@ class PrepareResourceHelper:
             self._thread_local.dctx = dctx
             return dctx
 
-    def _prepare_one_bundle(self, _bundle_entry: ResourceTableManifest):
-        _bundle_f = self._resource_dir / _bundle_entry.digest.hex()
+    def _prepare_one_bundle(
+        self, _bundle_f: Path, _bundle_entry: ResourceTableManifest
+    ):
         # try to re-use already prepared bundle file resource
         if (
             _bundle_f.is_file()
@@ -169,13 +173,13 @@ class PrepareResourceHelper:
         # To prevent other waiting threads just deadly waiting if the thread that does
         #   the downloading failed and raised exception, other waiting threads will also
         #   keep trying to get the _bundle_prepare_lock and prepare bundle.
-        for _ in range(MAX_WAIT_FOR_BUNDLE_TIMEOUT):
+        for _ in range(MAX_ITERS_FOR_WAITING_BUNDLE):
             if _bundle_ready_event.is_set():
                 break
 
             if _bundle_prepare_lock.acquire(blocking=False):
                 try:
-                    yield from self._prepare_one_bundle(_bundle_entry)
+                    yield from self._prepare_one_bundle(_bundle_f, _bundle_entry)
                     _bundle_ready_event.set()
                     break
                 except Exception as e:
@@ -184,7 +188,7 @@ class PrepareResourceHelper:
                     ) from e
                 finally:
                     _bundle_prepare_lock.release()
-            time.sleep(1)
+            time.sleep(WAITING_BUNDLE_INTERVAL)
         else:
             raise BundledRecreateFailed(
                 f"timeout waiting for bundle {_bundle_entry=} ready, will retry"
@@ -250,10 +254,7 @@ class PrepareResourceHelper:
             compressed_save_dst.unlink(missing_ok=True)
 
     def _prepare_one_slice(
-        self,
-        *,
-        slice_entry: ResourceTableManifest,
-        slice_save_dst: Path,
+        self, slice_save_dst: Path, slice_entry: ResourceTableManifest
     ):
         # try to re-use previously prepared slice
         if (
@@ -287,10 +288,7 @@ class PrepareResourceHelper:
             _slice_save_dst = (
                 self._download_dir / f"{_slice_entry.digest.hex()}_{entry.resource_id}"
             )
-
-            yield from self._prepare_one_slice(
-                slice_entry=_slice_entry, slice_save_dst=_slice_save_dst
-            )
+            yield from self._prepare_one_slice(_slice_save_dst, _slice_entry)
             slices_fpaths.append(_slice_save_dst)
 
         try:
