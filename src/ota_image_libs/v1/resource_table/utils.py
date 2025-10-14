@@ -30,7 +30,7 @@ from ota_image_libs.common import tmp_fname
 from .db import ResourceTableORMPool
 from .schema import ResourceTableManifest
 
-MAX_WAIT_FOR_BUNDLE_TIMEOUT = 30  # seconds
+MAX_WAIT_FOR_BUNDLE_TIMEOUT = 16  # seconds
 
 
 class BundledRecreateFailed(Exception): ...
