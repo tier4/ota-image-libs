@@ -15,14 +15,15 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Generator, Optional
 
 import zstandard
+from typing_extensions import TypeAlias
 
 from ota_image_libs._resource_filter import BundleFilter, CompressFilter, SliceFilter
 from ota_image_libs.common import tmp_fname
@@ -30,17 +31,16 @@ from ota_image_libs.common import tmp_fname
 from .db import ResourceTableORMPool
 from .schema import ResourceTableManifest
 
-logger = logging.getLogger(__name__)
+MAX_WAIT_FOR_BUNDLE_TIMEOUT = 16  # seconds
 
 
-def recreate_bundled_resource(
-    entry: ResourceTableManifest, bundle_fpath: Path, save_dst: Path
-) -> None:
-    filter_cfg = entry.filter_applied
-    assert isinstance(filter_cfg, BundleFilter)
-    with open(bundle_fpath, "rb") as src, open(save_dst, "wb") as dst:
-        src.seek(filter_cfg.offset)
-        dst.write(src.read(filter_cfg.len))
+class BundledRecreateFailed(Exception): ...
+
+
+class SlicedRecreateFailed(Exception): ...
+
+
+class CompressedRecreateFailed(Exception): ...
 
 
 def recreate_sliced_resource(
@@ -81,6 +81,13 @@ class ResourceDownloadInfo:
     compressed_origin_size: Optional[int] = None
 
 
+PerBundleLock: TypeAlias = threading.Lock
+BundleReadyEvent: TypeAlias = threading.Event
+BundleRecord: TypeAlias = (
+    "tuple[ResourceTableManifest, PerBundleLock, BundleReadyEvent]"
+)
+
+
 class PrepareResourceHelper:
     """Helper for processing resources.
 
@@ -100,7 +107,7 @@ class PrepareResourceHelper:
 
         # for bundled entries, only allow one task to actually rebuild the bundle,
         self._bundle_process_lock = threading.Lock()
-        self._bundle: dict[int, Path] = {}
+        self._bundle_per_locks: dict[int, BundleRecord] = {}
 
         self._thread_local = threading.local()
 
@@ -124,32 +131,62 @@ class PrepareResourceHelper:
     def _prepare_bundled_resource(
         self, entry: ResourceTableManifest, save_dst: Path
     ) -> Generator[ResourceDownloadInfo]:
-        assert isinstance(entry.filter_applied, BundleFilter)
-        # NOTE: prevent the same bundle being prepared again and again
-        bundle_rsid = entry.filter_applied.list_resource_id()
+        filter_cfg = entry.filter_applied
+        assert isinstance(filter_cfg, BundleFilter)
+
+        # NOTE: only do one query for each bundle
+        bundle_rsid = filter_cfg.list_resource_id()
         with self._bundle_process_lock:
-            if bundle_rsid not in self._bundle:
-                bundle_entry = self._orm_pool.orm_select_entry(resource_id=bundle_rsid)
-                logger.debug(f"Requesting bundle({bundle_rsid=}): {bundle_entry}")
-                _bundle_save_tmp = self._download_dir / tmp_fname(str(bundle_rsid))
-                bundle_save_dst = self._download_dir / bundle_entry.digest.hex()
+            if not (_bundle_info := self._bundle_per_locks.get(bundle_rsid)):
+                _bundle_entry = self._orm_pool.orm_select_entry(resource_id=bundle_rsid)
+                self._bundle_per_locks[bundle_rsid] = (
+                    _bundle_entry,
+                    _bundle_prepare_lock := PerBundleLock(),
+                    _bundle_ready_event := BundleReadyEvent(),
+                )
+            else:
+                _bundle_entry, _bundle_prepare_lock, _bundle_ready_event = _bundle_info
 
-                yield from self._prepare_resource(bundle_entry, _bundle_save_tmp)
-                os.replace(_bundle_save_tmp, bundle_save_dst)
-                self._bundle[bundle_rsid] = bundle_save_dst
-            bundle_fpath = self._bundle[bundle_rsid]
+        _bundle_f = self._resource_dir / _bundle_entry.digest.hex()
+        # Only trigger upper to download resources when _bundle_ready_event is not set.
+        # To prevent other waiting threads just deadly waiting if the thread that does
+        #   the downloading failed and raised exception, other waiting threads will also
+        #   keep trying to get the _bundle_prepare_lock and prepare bundle.
+        for _ in range(MAX_WAIT_FOR_BUNDLE_TIMEOUT):
+            if _bundle_ready_event.is_set():
+                break
 
-        # NOTE: keep the bundle for later use, but if recreate from bundle failed, we delete the bundle
-        #       to let otaclient do the re-downloading.
-        try:
-            recreate_bundled_resource(entry, bundle_fpath, save_dst)
-        except Exception as e:
-            logger.error(
-                f"failed to get resource {entry} from bundle: {e}, remove the bundle!",
-                exc_info=e,
+            if _bundle_prepare_lock.acquire(blocking=False):
+                try:
+                    _bundle_save_tmp = self._download_dir / tmp_fname(str(bundle_rsid))
+                    yield from self._prepare_resource(_bundle_entry, _bundle_save_tmp)
+                    os.replace(_bundle_save_tmp, _bundle_f)
+                    _bundle_ready_event.set()
+                    break
+                except Exception as e:
+                    raise BundledRecreateFailed(
+                        f"failed to prepare bundle {_bundle_entry}: {e!r}"
+                    ) from e
+                finally:
+                    _bundle_prepare_lock.release()
+            time.sleep(1)
+        else:
+            raise BundledRecreateFailed(
+                f"timeout waiting for bundle {_bundle_entry=} ready, will retry"
             )
-            bundle_fpath.unlink(missing_ok=True)
-            raise
+
+        # NOTE: keep the bundle for later use, but if recreate from bundle failed,
+        #       we clear the _bundle_ready_event and raise exception to upper to
+        #       trigger a re-downloading of the resources.
+        try:
+            with open(_bundle_f, "rb") as src, open(save_dst, "wb") as dst:
+                src.seek(filter_cfg.offset)
+                dst.write(src.read(filter_cfg.len))
+        except Exception as e:
+            _bundle_ready_event.clear()
+            raise BundledRecreateFailed(
+                f"failed to extract {entry} from bundle {_bundle_entry}: {e!r}"
+            ) from e
 
     def _prepare_compressed_resources(
         self, entry: ResourceTableManifest, save_dst: Path
@@ -183,8 +220,8 @@ class PrepareResourceHelper:
                     entry, compressed_save_dst, save_dst, dctx=self._thread_local_dctx
                 )
             except Exception as e:
-                logger.error(f"failure during decompressing: {entry}: {e}", exc_info=e)
-                raise
+                _err_msg = f"failure during decompressing: {entry}: {e}"
+                raise CompressedRecreateFailed(_err_msg) from e
             finally:
                 compressed_save_dst.unlink(missing_ok=True)
 
@@ -219,11 +256,10 @@ class PrepareResourceHelper:
         try:
             recreate_sliced_resource(entry, slices_fpaths, save_dst)
         except Exception as e:
-            logger.error(
-                f"failed to recreate sliced resource, remove all slices: {e}",
-                exc_info=e,
+            _err_msg = (
+                f"failed to recreate sliced resource {entry}, remove all slices: {e}"
             )
-            raise
+            raise SlicedRecreateFailed(_err_msg) from e
         finally:
             # after recovering the target resource, cleanup the slices.
             # also, if combination failed, also cleanup the slices to let
