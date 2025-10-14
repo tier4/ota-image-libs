@@ -129,7 +129,7 @@ class PrepareResourceHelper:
             self._thread_local.dctx = dctx
             return dctx
 
-    def _prepare_bundle(self, _bundle_entry: ResourceTableManifest):
+    def _prepare_one_bundle(self, _bundle_entry: ResourceTableManifest):
         _bundle_f = self._resource_dir / _bundle_entry.digest.hex()
         # try to re-use already prepared bundle file resource
         if (
@@ -175,7 +175,7 @@ class PrepareResourceHelper:
 
             if _bundle_prepare_lock.acquire(blocking=False):
                 try:
-                    yield from self._prepare_bundle(_bundle_entry)
+                    yield from self._prepare_one_bundle(_bundle_entry)
                     _bundle_ready_event.set()
                     break
                 except Exception as e:
@@ -249,6 +249,29 @@ class PrepareResourceHelper:
         finally:
             compressed_save_dst.unlink(missing_ok=True)
 
+    def _prepare_one_slice(
+        self,
+        *,
+        slice_entry: ResourceTableManifest,
+        slice_save_dst: Path,
+    ):
+        slice_digest = slice_entry.digest
+        slice_rsid = slice_entry.resource_id
+        # try to re-use previously prepared slice
+        if (
+            slice_save_dst.is_file()
+            and file_sha256(slice_save_dst).digest() == slice_digest
+        ):
+            return
+
+        _slice_save_tmp = self._download_dir / tmp_fname(str(slice_rsid))
+        yield ResourceDownloadInfo(
+            digest=slice_entry.digest,
+            size=slice_entry.size,
+            save_dst=_slice_save_tmp,
+        )
+        os.replace(_slice_save_tmp, slice_save_dst)
+
     def _prepare_sliced_resources(
         self, entry: ResourceTableManifest, save_dst: Path
     ) -> Generator[ResourceDownloadInfo]:
@@ -261,28 +284,16 @@ class PrepareResourceHelper:
             #       filter applying tree.
             assert _slice_entry.filter_applied is None
 
-            _slice_digest = _slice_entry.digest
             # NOTE: in case when the slice is shared by multiple resources, we suffix
             #       the resource_id to the fname.
             _slice_save_dst = (
-                self._download_dir / f"{_slice_digest.hex()}_{entry.resource_id}"
+                self._download_dir / f"{_slice_entry.digest.hex()}_{entry.resource_id}"
+            )
+
+            yield from self._prepare_one_slice(
+                slice_entry=_slice_entry, slice_save_dst=_slice_save_dst
             )
             slices_fpaths.append(_slice_save_dst)
-
-            # try to re-use previously prepared slice
-            if (
-                _slice_save_dst.is_file()
-                and file_sha256(_slice_save_dst).digest() == _slice_digest
-            ):
-                continue
-
-            _slice_save_tmp = self._download_dir / tmp_fname(str(_slice_rsid))
-            yield ResourceDownloadInfo(
-                digest=_slice_entry.digest,
-                size=_slice_entry.size,
-                save_dst=_slice_save_tmp,
-            )
-            os.replace(_slice_save_tmp, _slice_save_dst)
 
         try:
             recreate_sliced_resource(entry, slices_fpaths, save_dst)
