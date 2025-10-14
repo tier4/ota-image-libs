@@ -211,12 +211,13 @@ class PrepareResourceHelper:
 
         compressed_rsid = _filter_applied.list_resource_id()
         compressed_entry = self._orm_pool.orm_select_entry(resource_id=compressed_rsid)
+        compressed_digest = compressed_entry.digest
 
         # NOTE(20250917): if the compressed entry is not sliced, we directly tell the upper
         #                 caller to decompress on-the-fly during downloading.
         if compressed_entry.filter_applied is None:
             yield ResourceDownloadInfo(
-                digest=compressed_entry.digest,
+                digest=compressed_digest,
                 size=compressed_entry.size,
                 save_dst=save_dst,
                 compression_alg=_filter_applied.compression_alg,
@@ -226,13 +227,22 @@ class PrepareResourceHelper:
         # if the compressed entry is sliced, we still need to first recover from slices
         else:
             _compressed_save_tmp = self._download_dir / tmp_fname(str(compressed_rsid))
-            compressed_save_dst = self._download_dir / compressed_entry.digest.hex()
-            yield from self._prepare_resource(compressed_entry, _compressed_save_tmp)
-            os.replace(_compressed_save_tmp, compressed_save_dst)
+            compressed_save_dst = self._download_dir / compressed_digest.hex()
+            if (
+                not compressed_save_dst.is_file()
+                or file_sha256(compressed_save_dst).digest() != compressed_digest
+            ):
+                yield from self._prepare_resource(
+                    compressed_entry, _compressed_save_tmp
+                )
+                os.replace(_compressed_save_tmp, compressed_save_dst)
 
             try:
                 recreate_zstd_compressed_resource(
-                    entry, compressed_save_dst, save_dst, dctx=self._thread_local_dctx
+                    entry,
+                    compressed_save_dst,
+                    save_dst,
+                    dctx=self._thread_local_dctx,
                 )
             except Exception as e:
                 _err_msg = f"failure during decompressing: {entry}: {e}"
