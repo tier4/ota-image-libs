@@ -27,6 +27,7 @@ from typing_extensions import TypeAlias
 
 from ota_image_libs._resource_filter import BundleFilter, CompressFilter, SliceFilter
 from ota_image_libs.common import tmp_fname
+from ota_image_libs.common.io import file_sha256
 
 from .db import ResourceTableORMPool
 from .schema import ResourceTableManifest
@@ -158,10 +159,20 @@ class PrepareResourceHelper:
 
             if _bundle_prepare_lock.acquire(blocking=False):
                 try:
-                    _bundle_save_tmp = self._download_dir / tmp_fname(str(bundle_rsid))
-                    yield from self._prepare_resource(_bundle_entry, _bundle_save_tmp)
-                    os.replace(_bundle_save_tmp, _bundle_f)
-                    _bundle_ready_event.set()
+                    # try to re-use already prepared bundle file resource
+                    if (
+                        not _bundle_f.is_file()
+                        or file_sha256(_bundle_f).digest() != _bundle_entry.digest
+                    ):
+                        _bundle_f.unlink(missing_ok=True)
+                        _bundle_save_tmp = self._download_dir / tmp_fname(
+                            str(bundle_rsid)
+                        )
+                        yield from self._prepare_resource(
+                            _bundle_entry, _bundle_save_tmp
+                        )
+                        os.replace(_bundle_save_tmp, _bundle_f)
+                        _bundle_ready_event.set()
                     break
                 except Exception as e:
                     raise BundledRecreateFailed(
