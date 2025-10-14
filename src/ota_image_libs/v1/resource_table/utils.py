@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Generator, Optional
@@ -147,22 +148,32 @@ class PrepareResourceHelper:
                 _bundle_entry, _bundle_prepare_lock, _bundle_ready_event = _bundle_info
 
         _bundle_f = self._resource_dir / _bundle_entry.digest.hex()
-        # only trigger upper to download resources when _bundle_ready_event is not set.
-        if not _bundle_ready_event.is_set():
-            # ensure only one thread is preparing the bundle file
+        # Only trigger upper to download resources when _bundle_ready_event is not set.
+        # To prevent other waiting threads just deadly waiting if the thread that does
+        #   the downloading failed and raised exception, other waiting threads will also
+        #   keep trying to get the _bundle_prepare_lock and prepare bundle.
+        for _ in range(MAX_WAIT_FOR_BUNDLE_TIMEOUT):
+            if _bundle_ready_event.is_set():
+                break
+
             if _bundle_prepare_lock.acquire(blocking=False):
                 try:
                     _bundle_save_tmp = self._download_dir / tmp_fname(str(bundle_rsid))
                     yield from self._prepare_resource(_bundle_entry, _bundle_save_tmp)
                     os.replace(_bundle_save_tmp, _bundle_f)
                     _bundle_ready_event.set()
+                    break
+                except Exception as e:
+                    raise BundledRecreateFailed(
+                        f"failed to prepare bundle {_bundle_entry}: {e!r}"
+                    ) from e
                 finally:
                     _bundle_prepare_lock.release()
-            else:
-                if not _bundle_ready_event.wait(MAX_WAIT_FOR_BUNDLE_TIMEOUT):
-                    raise BundledRecreateFailed(
-                        f"timeout waiting for {_bundle_entry} being prepared, will retry"
-                    )
+            time.sleep(1)
+        else:
+            raise BundledRecreateFailed(
+                f"timeout waiting for bundle {_bundle_entry=} ready, will retry"
+            )
 
         # NOTE: keep the bundle for later use, but if recreate from bundle failed,
         #       we clear the _bundle_ready_event and raise exception to upper to
@@ -172,16 +183,7 @@ class PrepareResourceHelper:
                 src.seek(filter_cfg.offset)
                 dst.write(src.read(filter_cfg.len))
         except Exception as e:
-            # use a new _bundle_ready_event to identify next downloaded bundle
-            with self._bundle_process_lock:
-                self._bundle_per_locks[bundle_rsid] = (
-                    _bundle_entry,
-                    _bundle_prepare_lock,
-                    BundleReadyEvent(),
-                )
-            # clear this bundle's ready event
             _bundle_ready_event.clear()
-
             raise BundledRecreateFailed(
                 f"failed to extract {entry} from bundle {_bundle_entry}: {e!r}"
             ) from e
