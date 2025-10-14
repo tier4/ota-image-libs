@@ -248,9 +248,11 @@ class PrepareResourceHelper:
         slices_fpaths: list[Path] = []
         for _slice_rsid in slices_rsid:
             _slice_entry = self._orm_pool.orm_select_entry(resource_id=_slice_rsid)
-            _slice_digest = _slice_entry.digest
+            # NOTE: slice SHOULD NOT be filtered again, it MUST be the leaves in the resource
+            #       filter applying tree.
+            assert _slice_entry.filter_applied is None
 
-            _slice_save_tmp = self._download_dir / tmp_fname(str(_slice_rsid))
+            _slice_digest = _slice_entry.digest
             # NOTE: in case when the slice is shared by multiple resources, we suffix
             #       the resource_id to the fname.
             _slice_save_dst = (
@@ -258,9 +260,14 @@ class PrepareResourceHelper:
             )
             slices_fpaths.append(_slice_save_dst)
 
-            # NOTE: slice SHOULD NOT be filtered again, it MUST be the leaves in the resource
-            #       filter applying tree.
-            assert _slice_entry.filter_applied is None
+            # try to re-use previously prepared slice
+            if (
+                _slice_save_dst.is_file()
+                and file_sha256(_slice_save_dst).digest() == _slice_digest
+            ):
+                continue
+
+            _slice_save_tmp = self._download_dir / tmp_fname(str(_slice_rsid))
             yield ResourceDownloadInfo(
                 digest=_slice_entry.digest,
                 size=_slice_entry.size,
