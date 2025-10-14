@@ -255,16 +255,14 @@ class PrepareResourceHelper:
         slice_entry: ResourceTableManifest,
         slice_save_dst: Path,
     ):
-        slice_digest = slice_entry.digest
-        slice_rsid = slice_entry.resource_id
         # try to re-use previously prepared slice
         if (
             slice_save_dst.is_file()
-            and file_sha256(slice_save_dst).digest() == slice_digest
+            and file_sha256(slice_save_dst).digest() == slice_entry.digest
         ):
             return
 
-        _slice_save_tmp = self._download_dir / tmp_fname(str(slice_rsid))
+        _slice_save_tmp = self._download_dir / tmp_fname(str(slice_entry.resource_id))
         yield ResourceDownloadInfo(
             digest=slice_entry.digest,
             size=slice_entry.size,
