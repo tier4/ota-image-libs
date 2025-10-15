@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import itertools
 import os
 import threading
 import time
@@ -46,6 +47,30 @@ class SlicedRecreateFailed(Exception): ...
 
 
 class CompressedRecreateFailed(Exception): ...
+
+
+class _BundleReadyEventWithRevision:
+    def __init__(self) -> None:
+        self._cond = threading.Condition()
+        self._flag = False
+        self._rev_counter = _counter = itertools.count(0)
+        self._rev = next(_counter)
+
+    def is_set(self) -> tuple[bool, int]:
+        with self._cond:
+            return self._flag, self._rev
+
+    def set(self) -> int:
+        with self._cond:
+            self._flag = True
+            self._rev = next(self._rev_counter)
+            return self._rev
+
+    def clear(self, rev: int) -> None:
+        with self._cond:
+            if rev != self._rev:
+                return
+            self._flag = False
 
 
 def recreate_sliced_resource(
@@ -87,9 +112,8 @@ class ResourceDownloadInfo:
 
 
 PerBundleLock: TypeAlias = threading.Lock
-BundleReadyEvent: TypeAlias = threading.Event
 BundleRecord: TypeAlias = (
-    "tuple[ResourceTableManifest, PerBundleLock, BundleReadyEvent]"
+    "tuple[ResourceTableManifest, PerBundleLock, _BundleReadyEventWithRevision]"
 )
 
 
@@ -164,7 +188,7 @@ class PrepareResourceHelper:
                 self._bundle_per_locks[bundle_rsid] = (
                     _bundle_entry,
                     _bundle_prepare_lock := PerBundleLock(),
-                    _bundle_ready_event := BundleReadyEvent(),
+                    _bundle_ready_event := _BundleReadyEventWithRevision(),
                 )
             else:
                 _bundle_entry, _bundle_prepare_lock, _bundle_ready_event = _bundle_info
@@ -175,13 +199,14 @@ class PrepareResourceHelper:
         #   the downloading failed and raised exception, other waiting threads will also
         #   keep trying to get the _bundle_prepare_lock and prepare bundle.
         for _ in range(MAX_ITERS_FOR_WAITING_BUNDLE):
-            if _bundle_ready_event.is_set():
+            _is_set, bundle_rev = _bundle_ready_event.is_set()
+            if _is_set:
                 break
 
             if _bundle_prepare_lock.acquire(blocking=False):
                 try:
                     yield from self._prepare_one_bundle(_bundle_f, _bundle_entry)
-                    _bundle_ready_event.set()
+                    bundle_rev = _bundle_ready_event.set()
                     break
                 except Exception as e:
                     raise BundledRecreateFailed(
@@ -203,7 +228,7 @@ class PrepareResourceHelper:
                 src.seek(filter_cfg.offset)
                 dst.write(src.read(filter_cfg.len))
         except Exception as e:
-            _bundle_ready_event.clear()
+            _bundle_ready_event.clear(bundle_rev)
             raise BundledRecreateFailed(
                 f"failed to extract {entry} from bundle {_bundle_entry}: {e!r}"
             ) from e
@@ -412,7 +437,7 @@ class ResumeOTADownloadHelper:
                 entry_fname = entry.name
                 # NOTE: for slice, a suffix will be appended to the filename.
                 _digest_hex = entry_fname[:SHA256DIGEST_HEX_LEN]
-                # see L289, a slice will be named as <slice_digest>_<target_resouce_id>
+                # see L289-L291, a slice will be named as <slice_digest>_<target_resouce_id>
                 _sliced_target_rsid = entry_fname[SHA256DIGEST_HEX_LEN + 1 :]
                 try:
                     _digest = bytes.fromhex(_digest_hex)
