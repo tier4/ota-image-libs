@@ -185,6 +185,9 @@ class PrepareResourceHelper:
         with self._bundle_process_lock:
             if not (_bundle_info := self._bundle_per_locks.get(bundle_rsid)):
                 _bundle_entry = self._orm_pool.orm_select_entry(resource_id=bundle_rsid)
+                assert _bundle_entry, (
+                    f"potential broken OTA image detected, error entry rsid: {bundle_rsid}"
+                )
                 self._bundle_per_locks[bundle_rsid] = (
                     _bundle_entry,
                     _bundle_prepare_lock := PerBundleLock(),
@@ -241,6 +244,9 @@ class PrepareResourceHelper:
 
         compressed_rsid = _filter_applied.list_resource_id()
         compressed_entry = self._orm_pool.orm_select_entry(resource_id=compressed_rsid)
+        assert compressed_entry, (
+            f"potential broken OTA image detected, error entry rsid: {compressed_rsid}"
+        )
         compressed_digest = compressed_entry.digest
 
         # NOTE(20250917): if the compressed entry is not sliced, we directly tell the upper
@@ -305,6 +311,10 @@ class PrepareResourceHelper:
         slices_fpaths: list[Path] = []
         for _slice_rsid in slices_rsid:
             _slice_entry = self._orm_pool.orm_select_entry(resource_id=_slice_rsid)
+            assert _slice_entry, (
+                f"potential broken OTA image detected, error entry rsid: {_slice_rsid}"
+            )
+
             # NOTE: slice SHOULD NOT be filtered again, it MUST be the leaves in the resource
             #       filter applying tree.
             assert _slice_entry.filter_applied is None
