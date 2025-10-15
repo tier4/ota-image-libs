@@ -21,6 +21,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Generator, Optional
 
@@ -227,9 +228,14 @@ class PrepareResourceHelper:
         #       we clear the _bundle_ready_event and raise exception to upper to
         #       trigger a re-downloading of the resources.
         try:
-            with open(_bundle_f, "rb") as src, open(save_dst, "wb") as dst:
+            with open(_bundle_f, "rb") as src:
                 src.seek(filter_cfg.offset)
-                dst.write(src.read(filter_cfg.len))
+                _data = src.read(filter_cfg.len)
+
+            if sha256(_data).digest() != entry.digest:
+                raise ValueError(f"digest mismatch when processing {entry=}")
+            with open(save_dst, "wb") as dst:
+                dst.write(_data)
         except Exception as e:
             _bundle_ready_event.clear(bundle_rev)
             raise BundledRecreateFailed(
