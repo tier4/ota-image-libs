@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import itertools
 import os
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -74,6 +75,9 @@ class _BundleReadyEventWithRevision:
             self._flag = False
 
 
+SLICE_READ_BUFFER_SIZE = 8 * 1024**2
+
+
 def recreate_sliced_resource(
     entry: ResourceTableManifest, slices: list[Path], save_dst: Path
 ) -> None:
@@ -83,7 +87,8 @@ def recreate_sliced_resource(
     tmp_save_dst = save_dst.parent / tmp_fname(str(entry.resource_id))
     with open(tmp_save_dst, "wb") as dst:
         for _slice in slices:
-            dst.write(_slice.read_bytes())
+            with open(_slice, "rb") as _slice_f:
+                shutil.copyfileobj(_slice_f, dst, SLICE_READ_BUFFER_SIZE)
     os.replace(tmp_save_dst, save_dst)
 
 
