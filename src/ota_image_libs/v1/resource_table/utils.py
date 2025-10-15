@@ -169,7 +169,7 @@ class PrepareResourceHelper:
             else:
                 _bundle_entry, _bundle_prepare_lock, _bundle_ready_event = _bundle_info
 
-        _bundle_f = self._resource_dir / _bundle_entry.digest.hex()
+        _bundle_f = self._download_dir / _bundle_entry.digest.hex()
         # Only trigger upper to download resources when _bundle_ready_event is not set.
         # To prevent other waiting threads just deadly waiting if the thread that does
         #   the downloading failed and raised exception, other waiting threads will also
