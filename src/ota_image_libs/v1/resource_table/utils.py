@@ -453,7 +453,7 @@ class ResumeOTADownloadHelper:
                 entry_fname = entry.name
                 # NOTE: for slice, a suffix will be appended to the filename.
                 _digest_hex = entry_fname[:SHA256DIGEST_HEX_LEN]
-                # see L289-L291, a slice will be named as <slice_digest>_<target_resource_id>
+                # see L330-L332, a slice will be named as <slice_digest>_<target_resource_id>
                 _sliced_target_rsid = entry_fname[SHA256DIGEST_HEX_LEN + 1 :]
                 try:
                     _digest = bytes.fromhex(_digest_hex)
