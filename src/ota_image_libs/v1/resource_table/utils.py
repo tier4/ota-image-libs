@@ -51,23 +51,23 @@ class CompressedRecreateFailed(Exception): ...
 
 class _BundleReadyEventWithRevision:
     def __init__(self) -> None:
-        self._cond = threading.Condition()
+        self._lock = threading.Lock()
         self._flag = False
         self._rev_counter = _counter = itertools.count(0)
         self._rev = next(_counter)
 
     def is_set(self) -> tuple[bool, int]:
-        with self._cond:
+        with self._lock:
             return self._flag, self._rev
 
     def set(self) -> int:
-        with self._cond:
+        with self._lock:
             self._flag = True
             self._rev = next(self._rev_counter)
             return self._rev
 
     def clear(self, rev: int) -> None:
-        with self._cond:
+        with self._lock:
             if rev != self._rev:
                 return
             self._flag = False
