@@ -109,7 +109,7 @@ class ImageManifest(_ImageIDMixin, MetaFileBase):
         ota_release_key: OTAReleaseKey = Field(alias=OTA_RELEASE_KEY, default=OTAReleaseKey.dev)
 
         pilot_auto_platform: Union[str, None] = Field(alias=PILOT_AUTO_PLATFORM, default=None)
-        pilot_auto_platform_ecu_hardware: str = Field(alias=PLATFORM_ECU_HARDWARE_MODEL)
+        pilot_auto_platform_ecu_hardware: Union[str, None] = Field(alias=PLATFORM_ECU_HARDWARE_MODEL, default=None)
         pilot_auto_platform_ecu_hardware_series: Union[str, None] = Field(alias=PLATFORM_ECU_HARDWARE_SERIES, default=None)
         pilot_auto_platform_ecu_arch: str = Field(alias=PLATFORM_ECU_ARCH)
 
