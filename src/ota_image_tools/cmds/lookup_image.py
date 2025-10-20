@@ -45,7 +45,13 @@ def lookup_image_cmd_args(
     )
     lookup_image_arg_parser.add_argument(
         "--ecu-id",
-        help=("The target ECU ID to look up."),
+        help="The target ECU ID to look up.",
+    )
+    lookup_image_arg_parser.add_argument(
+        "--image-config",
+        help="Print the image config instead of image manifest.",
+        action="store_true",
+        default=False,
     )
     lookup_image_arg_parser.add_argument(
         "--release-key",
@@ -80,8 +86,16 @@ def lookup_image_cmd(args: Namespace) -> None:
     if not _image_manifest_descriptor:
         exit_with_err_msg(f"failed to find image with {image_identifier=}")
 
-    image_manifest_fpath = (
-        image_root / RESOURCE_DIR / _image_manifest_descriptor.digest.digest_hex
-    )
+    _resource_dir = image_root / RESOURCE_DIR
+    image_manifest_fpath = _resource_dir / _image_manifest_descriptor.digest.digest_hex
+    if args.image_config:
+        image_manifest = _image_manifest_descriptor.load_metafile_from_resource_dir(
+            _resource_dir
+        )
+        image_config_fpath = _resource_dir / image_manifest.config.digest.digest_hex
+        logger.info(f"image_config for {image_identifier=}: \n")
+        print(image_config_fpath.read_text())
+        return
+
     logger.info(f"image_manifest for {image_identifier=}: \n")
     print(image_manifest_fpath.read_text())
