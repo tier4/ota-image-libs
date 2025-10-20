@@ -38,7 +38,7 @@ def lookup_image_cmd_args(
         name="lookup-image",
         help=(
             _help_txt
-            := "Look for image payload within the OTA image and print out the image_manifest/image_config of it."
+            := "Look for image payload within the OTA image and print out the image_manifest of it."
         ),
         description=_help_txt,
         parents=parent_parser,
@@ -49,8 +49,10 @@ def lookup_image_cmd_args(
     )
     lookup_image_arg_parser.add_argument(
         "--release-key",
-        help="The release variant of the image to lookup, default `dev`",
+        help="The release variant of the image to lookup.",
         type=OTAReleaseKey,
+        choices=[OTAReleaseKey.prd.value, OTAReleaseKey.dev.value],
+        default=OTAReleaseKey.dev.value,
     )
     lookup_image_arg_parser.add_argument(
         "image_root",
@@ -69,7 +71,7 @@ def lookup_image_cmd(args: Namespace) -> None:
     release_key = args.release_key
 
     image_identifier = ImageIdentifier(ecu_id=ecu_id, release_key=release_key)
-    print(f"Look for {image_identifier} in the OTA image ...")
+    logger.info(f"Look for {image_identifier} in the OTA image ...")
 
     _index_helper = ImageIndexHelper(image_root)
     image_index = _index_helper.image_index
@@ -81,5 +83,5 @@ def lookup_image_cmd(args: Namespace) -> None:
     image_manifest_fpath = (
         image_root / RESOURCE_DIR / _image_manifest_descriptor.digest.digest_hex
     )
-    print(f"image_manifest for {image_identifier=}: \n")
+    logger.info(f"image_manifest for {image_identifier=}: \n")
     print(image_manifest_fpath.read_text())
