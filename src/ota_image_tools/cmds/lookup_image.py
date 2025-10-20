@@ -77,7 +77,7 @@ def lookup_image_cmd(args: Namespace) -> None:
     release_key = args.release_key
 
     image_identifier = ImageIdentifier(ecu_id=ecu_id, release_key=release_key)
-    logger.info(f"Look for {image_identifier} in the OTA image ...")
+    logger.debug(f"Look for {image_identifier} in the OTA image ...")
 
     _index_helper = ImageIndexHelper(image_root)
     image_index = _index_helper.image_index
@@ -93,9 +93,9 @@ def lookup_image_cmd(args: Namespace) -> None:
             _resource_dir
         )
         image_config_fpath = _resource_dir / image_manifest.config.digest.digest_hex
-        logger.info(f"image_config for {image_identifier=}: \n")
+        logger.debug(f"image_config for {image_identifier=}: \n")
         print(image_config_fpath.read_text())
         return
 
-    logger.info(f"image_manifest for {image_identifier=}: \n")
+    logger.debug(f"image_manifest for {image_identifier=}: \n")
     print(image_manifest_fpath.read_text())
