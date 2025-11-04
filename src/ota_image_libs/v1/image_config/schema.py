@@ -22,6 +22,7 @@ from ota_image_libs import DIGEST_ALGORITHM
 from ota_image_libs.common.metafile_base import MetaFileBase, MetaFileDescriptor
 from ota_image_libs.common.model_spec import AliasEnabledModel, MediaType, SchemaVersion
 from ota_image_libs.v1.annotation_keys import (
+    NVIDIA_JETSON_BSP_VER,
     OS,
     OS_VERSION,
     OTA_IMAGE_BLOBS_COUNT,
@@ -52,6 +53,7 @@ class ImageConfig(MetaFileBase):
         base_image: str = Field(alias=SYS_IMAGE_BASE_IMAGE)
         os: Union[str, None] = Field(alias=OS, default=None)
         os_version: Union[str, None] = Field(alias=OS_VERSION, default=None)
+        nvidia_jetson_bsp_version: Union[str, None] = Field(alias=NVIDIA_JETSON_BSP_VER, default=None)
 
         image_blobs_count: int = Field(alias=OTA_IMAGE_BLOBS_COUNT)
         image_blobs_size: int = Field(alias=OTA_IMAGE_BLOBS_SIZE)
