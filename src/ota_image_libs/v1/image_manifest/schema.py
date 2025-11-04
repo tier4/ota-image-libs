@@ -30,6 +30,7 @@ from ota_image_libs.common import (
 from ota_image_libs.common.model_spec import ArtifactType
 from ota_image_libs.v1 import OTA_IMAGE_MEDIA_TYPE
 from ota_image_libs.v1.annotation_keys import (
+    NVIDIA_JETSON_BSP_VER,
     OTA_RELEASE_KEY,
     PILOT_AUTO_PLATFORM,
     PLATFORM_ECU,
@@ -108,6 +109,7 @@ class ImageManifest(_ImageIDMixin, MetaFileBase):
         pilot_auto_platform_ecu: str = Field(alias=PLATFORM_ECU)
         ota_release_key: OTAReleaseKey = Field(alias=OTA_RELEASE_KEY, default=OTAReleaseKey.dev)
 
+        nvidia_jetson_bsp_version: Union[str, None] = Field(alias=NVIDIA_JETSON_BSP_VER, default=None)
         pilot_auto_platform: Union[str, None] = Field(alias=PILOT_AUTO_PLATFORM, default=None)
         pilot_auto_platform_ecu_hardware: Union[str, None] = Field(alias=PLATFORM_ECU_HARDWARE_MODEL, default=None)
         pilot_auto_platform_ecu_hardware_series: Union[str, None] = Field(alias=PLATFORM_ECU_HARDWARE_SERIES, default=None)

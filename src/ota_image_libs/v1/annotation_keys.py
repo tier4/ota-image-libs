@@ -48,6 +48,11 @@ OTA_IMAGE_BLOBS_COUNT = "vnd.tier4.ota.image.blobs-count"
 OTA_IMAGE_BLOBS_SIZE = "vnd.tier4.ota.image.blobs-size"
 
 #
+# ------ special hardware related ------ #
+#
+NVIDIA_JETSON_BSP_VER = "vnd.nvidia.jetson.bsp_ver"
+
+#
 # ------ system image related ------ #
 #
 SYS_IMAGE_BASE_IMAGE = "vnd.tier4.image.base-image"
