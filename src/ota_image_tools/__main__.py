@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from ota_image_libs import version
 from ota_image_tools._utils import configure_logging
+from ota_image_tools.cmds.lookup_image import lookup_image_cmd_args
 
 from .cmds import (
     inspect_blob_cmd_args,
@@ -76,6 +77,7 @@ def main():
 
     inspect_blob_cmd_args(sub_arg_parser)
     inspect_index_cmd_args(sub_arg_parser)
+    lookup_image_cmd_args(sub_arg_parser)
     verify_sign_cmd_args(sub_arg_parser)
     verify_resources_cmd_args(sub_arg_parser)
 

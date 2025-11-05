@@ -26,7 +26,7 @@ def configure_logging(log_level):
 
 
 def exit_with_err_msg(err_msg: str, exit_code: int = 1) -> NoReturn:
-    print(f"ERR: {err_msg}")
+    print(f"ERR: {err_msg}", file=sys.stderr)
     sys.exit(exit_code)
 
 
