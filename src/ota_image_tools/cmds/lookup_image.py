@@ -46,6 +46,7 @@ def lookup_image_cmd_args(
     lookup_image_arg_parser.add_argument(
         "--ecu-id",
         help="The target ECU ID to look up.",
+        required=True,
     )
     lookup_image_arg_parser.add_argument(
         "--image-config",
