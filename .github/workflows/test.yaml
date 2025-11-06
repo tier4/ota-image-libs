@@ -49,7 +49,9 @@ jobs:
       - name: Run pytest with coverage
         run: |
           mkdir -p test_result
-          uv run pytest tests/ -v --cov=ota_image_libs --cov-report=term-missing --cov-report=xml:test_result/coverage.xml
+          uv run coverage run -m pytest --junit-xml=test_result/pytest.xml
+          uv run coverage combine
+          uv run coverage xml -o test_result/coverage.xml
       - name: SonarCloud Scan
         if: matrix.python-version == '3.13'
         uses: SonarSource/sonarqube-scan-action@v6.0.0
