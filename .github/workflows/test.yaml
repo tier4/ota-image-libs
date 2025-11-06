@@ -24,7 +24,7 @@ on:
       - "src/**"
       - "tests/**"
       - ".github/workflows/test.yaml"
-  # allow the test CI to be manually triggerred
+  # allow the test CI to be manually triggered
   workflow_dispatch:
 
 jobs:
@@ -39,7 +39,7 @@ jobs:
       - name: Checkout commit
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # sonarcloud needs full git histories
+          fetch-depth: 0 # sonarcloud needs full git histories
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
