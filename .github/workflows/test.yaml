@@ -45,7 +45,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install uv
-        run: pip install uv
+        uses: astral-sh/setup-uv@v6
       - name: Run pytest with coverage
         run: |
           mkdir -p test_result
