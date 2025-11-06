@@ -42,35 +42,35 @@ def sample_image_index():
 
 
 class TestImageIndexHelper:
-    def test_init_with_valid_index(self, temp_dir, sample_image_index):
+    def test_init_with_valid_index(self, tmp_path, sample_image_index):
         """Test ImageIndexHelper initialization with valid index."""
         # Create image structure
-        index_file = temp_dir / IMAGE_INDEX_FNAME
+        index_file = tmp_path / IMAGE_INDEX_FNAME
         index_file.write_text(sample_image_index.export_metafile())
 
-        resource_dir = temp_dir / RESOURCE_DIR
+        resource_dir = tmp_path / RESOURCE_DIR
         resource_dir.mkdir(parents=True)
 
-        helper = ImageIndexHelper(temp_dir)
+        helper = ImageIndexHelper(tmp_path)
 
         assert helper.image_index is not None
         assert helper.image_index.schemaVersion == 2
 
-    def test_image_index_property(self, temp_dir, sample_image_index):
+    def test_image_index_property(self, tmp_path, sample_image_index):
         """Test image_index property returns the index."""
-        index_file = temp_dir / IMAGE_INDEX_FNAME
+        index_file = tmp_path / IMAGE_INDEX_FNAME
         index_file.write_text(sample_image_index.export_metafile())
 
-        helper = ImageIndexHelper(temp_dir)
+        helper = ImageIndexHelper(tmp_path)
 
         assert isinstance(helper.image_index, ImageIndex)
 
-    def test_image_index_json_property(self, temp_dir, sample_image_index):
+    def test_image_index_json_property(self, tmp_path, sample_image_index):
         """Test image_index_json property returns JSON string."""
-        index_file = temp_dir / IMAGE_INDEX_FNAME
+        index_file = tmp_path / IMAGE_INDEX_FNAME
         index_file.write_text(sample_image_index.export_metafile())
 
-        helper = ImageIndexHelper(temp_dir)
+        helper = ImageIndexHelper(tmp_path)
 
         json_str = helper.image_index_json
         assert isinstance(json_str, str)
@@ -78,31 +78,31 @@ class TestImageIndexHelper:
         parsed = json.loads(json_str)
         assert "schemaVersion" in parsed
 
-    def test_image_index_fpath_property(self, temp_dir, sample_image_index):
+    def test_image_index_fpath_property(self, tmp_path, sample_image_index):
         """Test image_index_fpath property returns correct path."""
-        index_file = temp_dir / IMAGE_INDEX_FNAME
+        index_file = tmp_path / IMAGE_INDEX_FNAME
         index_file.write_text(sample_image_index.export_metafile())
 
-        helper = ImageIndexHelper(temp_dir)
+        helper = ImageIndexHelper(tmp_path)
 
         assert helper.image_index_fpath == index_file
 
-    def test_image_resource_dir_property(self, temp_dir, sample_image_index):
+    def test_image_resource_dir_property(self, tmp_path, sample_image_index):
         """Test image_resource_dir property returns correct path."""
-        index_file = temp_dir / IMAGE_INDEX_FNAME
+        index_file = tmp_path / IMAGE_INDEX_FNAME
         index_file.write_text(sample_image_index.export_metafile())
 
-        helper = ImageIndexHelper(temp_dir)
+        helper = ImageIndexHelper(tmp_path)
 
-        expected_dir = temp_dir / RESOURCE_DIR
+        expected_dir = tmp_path / RESOURCE_DIR
         assert helper.image_resource_dir == expected_dir
 
-    def test_sync_index(self, temp_dir, sample_image_index):
+    def test_sync_index(self, tmp_path, sample_image_index):
         """Test sync_index writes updated index back to file."""
-        index_file = temp_dir / IMAGE_INDEX_FNAME
+        index_file = tmp_path / IMAGE_INDEX_FNAME
         index_file.write_text(sample_image_index.export_metafile())
 
-        helper = ImageIndexHelper(temp_dir)
+        helper = ImageIndexHelper(tmp_path)
 
         # Modify the index
         helper.image_index.manifests = []
@@ -121,7 +121,7 @@ class TestImageIndexHelper:
 
 
 class TestImageIndexIntegration:
-    def test_parse_and_export_roundtrip_with_annotations(self, temp_dir):
+    def test_parse_and_export_roundtrip_with_annotations(self, tmp_path):
         """Test parsing and exporting ImageIndex with annotations maintains data."""
         from ota_image_libs.v1.annotation_keys import (
             BUILD_TOOL_VERSION,

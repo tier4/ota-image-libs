@@ -28,9 +28,9 @@ from ota_image_libs.v1.file_table.schema import (
 
 
 class TestFileTableDBHelper:
-    def test_bootstrap_db(self, temp_dir):
+    def test_bootstrap_db(self, tmp_path):
         """Test bootstrapping the file table database."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -38,9 +38,9 @@ class TestFileTableDBHelper:
         assert db_file.exists()
         assert db_file.stat().st_size > 0
 
-    def test_connect_fstable_db(self, temp_dir):
+    def test_connect_fstable_db(self, tmp_path):
         """Test connecting to file table database."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -49,9 +49,9 @@ class TestFileTableDBHelper:
         assert conn is not None
         conn.close()
 
-    def test_connect_with_wal_mode(self, temp_dir):
+    def test_connect_with_wal_mode(self, tmp_path):
         """Test connecting with WAL mode enabled."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -60,9 +60,9 @@ class TestFileTableDBHelper:
         assert conn is not None
         conn.close()
 
-    def test_connect_with_mmap(self, temp_dir):
+    def test_connect_with_mmap(self, tmp_path):
         """Test connecting with mmap enabled."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -71,9 +71,9 @@ class TestFileTableDBHelper:
         assert conn is not None
         conn.close()
 
-    def test_iter_dir_entries_empty(self, temp_dir):
+    def test_iter_dir_entries_empty(self, tmp_path):
         """Test iterating directory entries on empty database."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -81,9 +81,9 @@ class TestFileTableDBHelper:
         entries = list(helper.iter_dir_entries())
         assert len(entries) == 0
 
-    def test_iter_regular_entries_empty(self, temp_dir):
+    def test_iter_regular_entries_empty(self, tmp_path):
         """Test iterating regular file entries on empty database."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -91,9 +91,9 @@ class TestFileTableDBHelper:
         entries = list(helper.iter_regular_entries())
         assert len(entries) == 0
 
-    def test_iter_non_regular_entries_empty(self, temp_dir):
+    def test_iter_non_regular_entries_empty(self, tmp_path):
         """Test iterating non-regular file entries on empty database."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -101,9 +101,9 @@ class TestFileTableDBHelper:
         entries = list(helper.iter_non_regular_entries())
         assert len(entries) == 0
 
-    def test_select_all_digests_empty(self, temp_dir):
+    def test_select_all_digests_empty(self, tmp_path):
         """Test selecting all digests from empty database."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -113,9 +113,9 @@ class TestFileTableDBHelper:
 
 
 class TestFileTableIntegration:
-    def test_create_and_query_inodes(self, temp_dir):
+    def test_create_and_query_inodes(self, tmp_path):
         """Test creating and querying inode entries."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -144,9 +144,9 @@ class TestFileTableIntegration:
 
         conn.close()
 
-    def test_create_regular_file_entry(self, temp_dir):
+    def test_create_regular_file_entry(self, tmp_path):
         """Test creating regular file entry."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -183,9 +183,9 @@ class TestFileTableIntegration:
 
         conn.close()
 
-    def test_create_non_regular_file_entry(self, temp_dir):
+    def test_create_non_regular_file_entry(self, tmp_path):
         """Test creating non-regular file entry (symlink)."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -222,9 +222,9 @@ class TestFileTableIntegration:
 
         conn.close()
 
-    def test_multiple_connections(self, temp_dir):
+    def test_multiple_connections(self, tmp_path):
         """Test multiple connections to the same database."""
-        db_file = temp_dir / "file_table.db"
+        db_file = tmp_path / "file_table.db"
 
         helper = FileTableDBHelper(db_file)
         helper.bootstrap_db()

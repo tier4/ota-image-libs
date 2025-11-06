@@ -20,11 +20,11 @@ from ota_image_libs.v1.otaclient_package.utils import add_otaclient_package
 
 
 class TestOTAClientPackageUtils:
-    def test_add_otaclient_package(self, temp_dir):
+    def test_add_otaclient_package(self, tmp_path):
         """Test adding otaclient package to OTA image."""
-        release_dir = temp_dir / "release"
+        release_dir = tmp_path / "release"
         release_dir.mkdir()
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
         # Create a minimal manifest.json
@@ -58,11 +58,11 @@ class TestOTAClientPackageUtils:
         assert descriptor.digest is not None
         assert descriptor.size > 0
 
-    def test_add_otaclient_package_multiple_payloads(self, temp_dir):
+    def test_add_otaclient_package_multiple_payloads(self, tmp_path):
         """Test adding otaclient package with multiple payloads."""
-        release_dir = temp_dir / "release"
+        release_dir = tmp_path / "release"
         release_dir.mkdir()
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
         # Create manifest with multiple packages

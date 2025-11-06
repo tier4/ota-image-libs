@@ -22,9 +22,9 @@ from ota_image_libs.common.io import (
 
 
 class TestCalFileDigest:
-    def test_cal_file_digest_sha256(self, temp_dir):
+    def test_cal_file_digest_sha256(self, tmp_path):
         """Test file digest calculation with sha256."""
-        test_file = temp_dir / "test.txt"
+        test_file = tmp_path / "test.txt"
         test_content = b"Hello, World!"
         test_file.write_bytes(test_content)
 
@@ -33,9 +33,9 @@ class TestCalFileDigest:
 
         assert result.hexdigest() == expected
 
-    def test_cal_file_digest_empty_file(self, temp_dir):
+    def test_cal_file_digest_empty_file(self, tmp_path):
         """Test digest calculation on empty file."""
-        test_file = temp_dir / "empty.txt"
+        test_file = tmp_path / "empty.txt"
         test_file.write_bytes(b"")
 
         result = cal_file_digest(test_file, hashlib.sha256)
@@ -45,9 +45,9 @@ class TestCalFileDigest:
 
 
 class TestFileSha256:
-    def test_file_sha256_basic(self, temp_dir):
+    def test_file_sha256_basic(self, tmp_path):
         """Test file_sha256 convenience function."""
-        test_file = temp_dir / "test.txt"
+        test_file = tmp_path / "test.txt"
         test_content = b"Test content for sha256"
         test_file.write_bytes(test_content)
 
@@ -58,18 +58,18 @@ class TestFileSha256:
 
 
 class TestRemoveFile:
-    def test_remove_file_regular_file(self, temp_dir):
+    def test_remove_file_regular_file(self, tmp_path):
         """Test removing a regular file."""
-        test_file = temp_dir / "test.txt"
+        test_file = tmp_path / "test.txt"
         test_file.write_text("content")
         assert test_file.exists()
 
         remove_file(test_file)
         assert not test_file.exists()
 
-    def test_remove_file_directory(self, temp_dir):
+    def test_remove_file_directory(self, tmp_path):
         """Test removing a directory."""
-        test_dir = temp_dir / "test_dir"
+        test_dir = tmp_path / "test_dir"
         test_dir.mkdir()
         test_file = test_dir / "file.txt"
         test_file.write_text("content")

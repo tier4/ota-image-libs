@@ -24,73 +24,73 @@ from ota_image_libs.v1.utils import check_if_valid_ota_image
 
 
 class TestCheckIfValidOTAImage:
-    def test_valid_ota_image(self, temp_dir):
+    def test_valid_ota_image(self, tmp_path):
         """Test validation of a valid OTA image."""
         # Create valid OTA image structure
-        oci_layout_f = temp_dir / OCI_LAYOUT_FNAME
+        oci_layout_f = tmp_path / OCI_LAYOUT_FNAME
         oci_layout_f.write_text(json.dumps(OCI_LAYOUT_CONTENT))
 
-        index_f = temp_dir / IMAGE_INDEX_FNAME
+        index_f = tmp_path / IMAGE_INDEX_FNAME
         index_f.write_text("{}")
 
-        resource_dir = temp_dir / RESOURCE_DIR
+        resource_dir = tmp_path / RESOURCE_DIR
         resource_dir.mkdir(parents=True)
 
-        assert check_if_valid_ota_image(temp_dir) is True
+        assert check_if_valid_ota_image(tmp_path) is True
 
-    def test_missing_oci_layout(self, temp_dir):
+    def test_missing_oci_layout(self, tmp_path):
         """Test validation fails when oci-layout is missing."""
-        index_f = temp_dir / IMAGE_INDEX_FNAME
+        index_f = tmp_path / IMAGE_INDEX_FNAME
         index_f.write_text("{}")
 
-        resource_dir = temp_dir / RESOURCE_DIR
+        resource_dir = tmp_path / RESOURCE_DIR
         resource_dir.mkdir(parents=True)
 
-        assert check_if_valid_ota_image(temp_dir) is False
+        assert check_if_valid_ota_image(tmp_path) is False
 
-    def test_invalid_oci_layout_content(self, temp_dir):
+    def test_invalid_oci_layout_content(self, tmp_path):
         """Test validation fails with invalid oci-layout content."""
-        oci_layout_f = temp_dir / OCI_LAYOUT_FNAME
+        oci_layout_f = tmp_path / OCI_LAYOUT_FNAME
         oci_layout_f.write_text('{"imageLayoutVersion": "2.0.0"}')
 
-        index_f = temp_dir / IMAGE_INDEX_FNAME
+        index_f = tmp_path / IMAGE_INDEX_FNAME
         index_f.write_text("{}")
 
-        resource_dir = temp_dir / RESOURCE_DIR
+        resource_dir = tmp_path / RESOURCE_DIR
         resource_dir.mkdir(parents=True)
 
-        assert check_if_valid_ota_image(temp_dir) is False
+        assert check_if_valid_ota_image(tmp_path) is False
 
-    def test_missing_index_file(self, temp_dir):
+    def test_missing_index_file(self, tmp_path):
         """Test validation fails when index.json is missing."""
-        oci_layout_f = temp_dir / OCI_LAYOUT_FNAME
+        oci_layout_f = tmp_path / OCI_LAYOUT_FNAME
         oci_layout_f.write_text(json.dumps(OCI_LAYOUT_CONTENT))
 
-        resource_dir = temp_dir / RESOURCE_DIR
+        resource_dir = tmp_path / RESOURCE_DIR
         resource_dir.mkdir(parents=True)
 
-        assert check_if_valid_ota_image(temp_dir) is False
+        assert check_if_valid_ota_image(tmp_path) is False
 
-    def test_missing_resource_dir(self, temp_dir):
+    def test_missing_resource_dir(self, tmp_path):
         """Test validation fails when resource directory is missing."""
-        oci_layout_f = temp_dir / OCI_LAYOUT_FNAME
+        oci_layout_f = tmp_path / OCI_LAYOUT_FNAME
         oci_layout_f.write_text(json.dumps(OCI_LAYOUT_CONTENT))
 
-        index_f = temp_dir / IMAGE_INDEX_FNAME
+        index_f = tmp_path / IMAGE_INDEX_FNAME
         index_f.write_text("{}")
 
-        assert check_if_valid_ota_image(temp_dir) is False
+        assert check_if_valid_ota_image(tmp_path) is False
 
-    def test_resource_dir_is_file(self, temp_dir):
+    def test_resource_dir_is_file(self, tmp_path):
         """Test validation fails when resource_dir is a file instead of directory."""
-        oci_layout_f = temp_dir / OCI_LAYOUT_FNAME
+        oci_layout_f = tmp_path / OCI_LAYOUT_FNAME
         oci_layout_f.write_text(json.dumps(OCI_LAYOUT_CONTENT))
 
-        index_f = temp_dir / IMAGE_INDEX_FNAME
+        index_f = tmp_path / IMAGE_INDEX_FNAME
         index_f.write_text("{}")
 
-        resource_file = temp_dir / RESOURCE_DIR
+        resource_file = tmp_path / RESOURCE_DIR
         resource_file.parent.mkdir(parents=True, exist_ok=True)
         resource_file.write_text("not a directory")
 
-        assert check_if_valid_ota_image(temp_dir) is False
+        assert check_if_valid_ota_image(tmp_path) is False

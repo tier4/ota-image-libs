@@ -19,9 +19,9 @@ from ota_image_libs.v1.resource_table.schema import ResourceTableManifest
 
 
 class TestResourceTableDBHelper:
-    def test_bootstrap_db(self, temp_dir):
+    def test_bootstrap_db(self, tmp_path):
         """Test bootstrapping the resource table database."""
-        db_file = temp_dir / "resource_table.db"
+        db_file = tmp_path / "resource_table.db"
 
         helper = ResourceTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -29,9 +29,9 @@ class TestResourceTableDBHelper:
         assert db_file.exists()
         assert db_file.stat().st_size > 0
 
-    def test_connect_rstable_db(self, temp_dir):
+    def test_connect_rstable_db(self, tmp_path):
         """Test connecting to resource table database."""
-        db_file = temp_dir / "resource_table.db"
+        db_file = tmp_path / "resource_table.db"
 
         helper = ResourceTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -40,9 +40,9 @@ class TestResourceTableDBHelper:
         assert conn is not None
         conn.close()
 
-    def test_connect_with_wal_mode(self, temp_dir):
+    def test_connect_with_wal_mode(self, tmp_path):
         """Test connecting with WAL mode enabled."""
-        db_file = temp_dir / "resource_table.db"
+        db_file = tmp_path / "resource_table.db"
 
         helper = ResourceTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -51,9 +51,9 @@ class TestResourceTableDBHelper:
         assert conn is not None
         conn.close()
 
-    def test_connect_with_mmap(self, temp_dir):
+    def test_connect_with_mmap(self, tmp_path):
         """Test connecting with mmap enabled."""
-        db_file = temp_dir / "resource_table.db"
+        db_file = tmp_path / "resource_table.db"
 
         helper = ResourceTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -62,9 +62,9 @@ class TestResourceTableDBHelper:
         assert conn is not None
         conn.close()
 
-    def test_get_orm(self, temp_dir):
+    def test_get_orm(self, tmp_path):
         """Test getting ORM instance."""
-        db_file = temp_dir / "resource_table.db"
+        db_file = tmp_path / "resource_table.db"
 
         helper = ResourceTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -72,9 +72,9 @@ class TestResourceTableDBHelper:
         orm = helper.get_orm()
         assert orm is not None
 
-    def test_get_orm_with_connection(self, temp_dir):
+    def test_get_orm_with_connection(self, tmp_path):
         """Test getting ORM instance with existing connection."""
-        db_file = temp_dir / "resource_table.db"
+        db_file = tmp_path / "resource_table.db"
 
         helper = ResourceTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -84,9 +84,9 @@ class TestResourceTableDBHelper:
         assert orm is not None
         conn.close()
 
-    def test_get_orm_pool(self, temp_dir):
+    def test_get_orm_pool(self, tmp_path):
         """Test getting ORM pool."""
-        db_file = temp_dir / "resource_table.db"
+        db_file = tmp_path / "resource_table.db"
 
         helper = ResourceTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -94,9 +94,9 @@ class TestResourceTableDBHelper:
         orm_pool = helper.get_orm_pool(db_conn_num=2)
         assert orm_pool is not None
 
-    def test_iter_all_with_shuffle_empty(self, temp_dir):
+    def test_iter_all_with_shuffle_empty(self, tmp_path):
         """Test iterating all entries with shuffle on empty database."""
-        db_file = temp_dir / "resource_table.db"
+        db_file = tmp_path / "resource_table.db"
 
         helper = ResourceTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -104,9 +104,9 @@ class TestResourceTableDBHelper:
         entries = list(helper.iter_all_with_shuffle(batch_size=10))
         assert len(entries) == 0
 
-    def test_iter_all_with_shuffle_with_data(self, temp_dir):
+    def test_iter_all_with_shuffle_with_data(self, tmp_path):
         """Test iterating all entries with shuffle with some data."""
-        db_file = temp_dir / "resource_table.db"
+        db_file = tmp_path / "resource_table.db"
 
         helper = ResourceTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -138,9 +138,9 @@ class TestResourceTableDBHelper:
 
 
 class TestResourceTableIntegration:
-    def test_create_and_query_entries(self, temp_dir):
+    def test_create_and_query_entries(self, tmp_path):
         """Test creating and querying resource table entries."""
-        db_file = temp_dir / "resource_table.db"
+        db_file = tmp_path / "resource_table.db"
 
         helper = ResourceTableDBHelper(db_file)
         helper.bootstrap_db()
@@ -166,9 +166,9 @@ class TestResourceTableIntegration:
 
         conn.close()
 
-    def test_multiple_connections(self, temp_dir):
+    def test_multiple_connections(self, tmp_path):
         """Test multiple connections to the same database."""
-        db_file = temp_dir / "resource_table.db"
+        db_file = tmp_path / "resource_table.db"
 
         helper = ResourceTableDBHelper(db_file)
         helper.bootstrap_db()

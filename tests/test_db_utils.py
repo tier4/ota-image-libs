@@ -19,19 +19,19 @@ from ota_image_libs.common.db_utils import count_blobs_in_dir
 class TestDBUtils:
     """Test database utility functions."""
 
-    def test_count_blobs_in_empty_dir(self, temp_dir):
+    def test_count_blobs_in_empty_dir(self, tmp_path):
         """Test counting blobs in an empty directory."""
-        count, size = count_blobs_in_dir(temp_dir)
+        count, size = count_blobs_in_dir(tmp_path)
         assert count == 0
         assert size == 0
 
-    def test_count_blobs_in_dir_with_multiple_files(self, temp_dir):
+    def test_count_blobs_in_dir_with_multiple_files(self, tmp_path):
         """Test counting multiple blobs."""
         # Create multiple test files
         for i in range(5):
-            (temp_dir / f"blob{i}.dat").write_bytes(b"x" * (i + 1) * 100)
+            (tmp_path / f"blob{i}.dat").write_bytes(b"x" * (i + 1) * 100)
 
-        count, size = count_blobs_in_dir(temp_dir)
+        count, size = count_blobs_in_dir(tmp_path)
 
         assert count == 5
         assert size == sum((i + 1) * 100 for i in range(5))

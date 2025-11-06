@@ -36,9 +36,9 @@ class TestMetaFileDescriptor(MetaFileDescriptor[TestMetaFile]):
 
 
 class TestMetaFileDescriptorIntegration:
-    def test_export_metafile_to_resource_dir(self, temp_dir):
+    def test_export_metafile_to_resource_dir(self, tmp_path):
         """Test exporting metafile to resource directory."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
         metafile = TestMetaFile(test_field="test_value")
@@ -59,9 +59,9 @@ class TestMetaFileDescriptorIntegration:
         parsed = json.loads(content)
         assert parsed["test_field"] == "test_value"
 
-    def test_load_metafile_from_resource_dir(self, temp_dir):
+    def test_load_metafile_from_resource_dir(self, tmp_path):
         """Test loading metafile from resource directory."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
         metafile = TestMetaFile(test_field="test_value")
@@ -81,9 +81,9 @@ class TestMetaFileDescriptorIntegration:
 
         assert metafile_type == TestMetaFile
 
-    def test_export_and_retrieve_roundtrip(self, temp_dir):
+    def test_export_and_retrieve_roundtrip(self, tmp_path):
         """Test full roundtrip of export and retrieve."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
         original = TestMetaFile(test_field="roundtrip_test")

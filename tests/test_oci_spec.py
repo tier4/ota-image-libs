@@ -125,9 +125,9 @@ class TestOCIDescriptor:
 
         assert descriptor.annotations is None
 
-    def test_oci_descriptor_add_contents_to_resource_dir(self, temp_dir):
+    def test_oci_descriptor_add_contents_to_resource_dir(self, tmp_path):
         """Test adding string contents to resource directory."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
         contents = "test content"
@@ -142,9 +142,9 @@ class TestOCIDescriptor:
         assert blob_path.exists()
         assert blob_path.read_bytes() == contents.encode("utf-8")
 
-    def test_oci_descriptor_add_bytes_to_resource_dir(self, temp_dir):
+    def test_oci_descriptor_add_bytes_to_resource_dir(self, tmp_path):
         """Test adding bytes contents to resource directory."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
         contents = b"test binary content"
@@ -156,11 +156,11 @@ class TestOCIDescriptor:
         blob_path = resource_dir / descriptor.digest.digest_hex
         assert blob_path.read_bytes() == contents
 
-    def test_oci_descriptor_add_file_to_resource_dir(self, temp_dir):
+    def test_oci_descriptor_add_file_to_resource_dir(self, tmp_path):
         """Test adding file to resource directory."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
-        src_file = temp_dir / "test.txt"
+        src_file = tmp_path / "test.txt"
         src_file.write_text("test file content")
 
         descriptor = ConcreteOCIDescriptor.add_file_to_resource_dir(
@@ -174,11 +174,11 @@ class TestOCIDescriptor:
         # Original file should still exist (remove_origin=False by default)
         assert src_file.exists()
 
-    def test_oci_descriptor_add_file_remove_origin(self, temp_dir):
+    def test_oci_descriptor_add_file_remove_origin(self, tmp_path):
         """Test adding file with remove_origin=True."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
-        src_file = temp_dir / "test.txt"
+        src_file = tmp_path / "test.txt"
         src_file.write_text("test file content")
 
         descriptor = ConcreteOCIDescriptor.add_file_to_resource_dir(
@@ -191,9 +191,9 @@ class TestOCIDescriptor:
         blob_path = resource_dir / descriptor.digest.digest_hex
         assert blob_path.exists()
 
-    def test_oci_descriptor_get_blob_from_resource_dir(self, temp_dir):
+    def test_oci_descriptor_get_blob_from_resource_dir(self, tmp_path):
         """Test getting blob from resource directory."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
         contents = b"test content"
@@ -206,9 +206,9 @@ class TestOCIDescriptor:
         assert blob_path.exists()
         assert blob_path.read_bytes() == contents
 
-    def test_oci_descriptor_get_blob_not_found(self, temp_dir):
+    def test_oci_descriptor_get_blob_not_found(self, tmp_path):
         """Test getting non-existent blob raises error."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
         digest = Sha256Digest("0" * 64)  # Valid hex string
@@ -217,9 +217,9 @@ class TestOCIDescriptor:
         with pytest.raises(FileNotFoundError, match="not found in OTA image"):
             descriptor.get_blob_from_resource_dir(resource_dir)
 
-    def test_oci_descriptor_retrieve_blob_contents(self, temp_dir):
+    def test_oci_descriptor_retrieve_blob_contents(self, tmp_path):
         """Test retrieving blob contents."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
         contents = b"test content"
@@ -231,11 +231,11 @@ class TestOCIDescriptor:
 
         assert retrieved == contents
 
-    def test_oci_descriptor_export_blob(self, temp_dir):
+    def test_oci_descriptor_export_blob(self, tmp_path):
         """Test exporting blob to a destination."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
-        export_dir = temp_dir / "export"
+        export_dir = tmp_path / "export"
         export_dir.mkdir()
 
         contents = b"test content"
@@ -250,9 +250,9 @@ class TestOCIDescriptor:
         assert export_path.exists()
         assert export_path.read_bytes() == contents
 
-    def test_oci_descriptor_remove_blob(self, temp_dir):
+    def test_oci_descriptor_remove_blob(self, tmp_path):
         """Test removing blob from resource directory."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
         contents = b"test content"
@@ -275,11 +275,11 @@ class ZstdOCIDescriptor(OCIDescriptor):
 
 
 class TestOCIDescriptorZstd:
-    def test_add_file_with_zstd_compression(self, temp_dir):
+    def test_add_file_with_zstd_compression(self, tmp_path):
         """Test adding file with zstd compression."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
-        src_file = temp_dir / "test.txt"
+        src_file = tmp_path / "test.txt"
         test_content = b"test content " * 100  # Repeatable content compresses well
         src_file.write_bytes(test_content)
 
@@ -294,17 +294,17 @@ class TestOCIDescriptorZstd:
         blob_path = resource_dir / descriptor.digest.digest_hex
         assert blob_path.exists()
 
-    def test_export_blob_with_auto_decompress(self, temp_dir):
+    def test_export_blob_with_auto_decompress(self, tmp_path):
         """Test exporting zstd compressed blob with auto_decompress."""
-        resource_dir = temp_dir / "resources"
+        resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
-        src_file = temp_dir / "test.txt"
+        src_file = tmp_path / "test.txt"
         test_content = b"test content " * 100
         src_file.write_bytes(test_content)
 
         descriptor = ZstdOCIDescriptor.add_file_to_resource_dir(src_file, resource_dir)
 
-        export_path = temp_dir / "exported.txt"
+        export_path = tmp_path / "exported.txt"
         descriptor.export_blob_from_resource_dir(
             resource_dir, export_path, auto_decompress=True
         )

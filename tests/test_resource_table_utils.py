@@ -25,10 +25,10 @@ from ota_image_libs.v1.resource_table.utils import (
 
 
 class TestRecreateSlicedResource:
-    def test_recreate_sliced_resource_single_slice(self, temp_dir):
+    def test_recreate_sliced_resource_single_slice(self, tmp_path):
         """Test recreating resource from a single slice."""
         # Create test slices
-        slice1 = temp_dir / "slice1.bin"
+        slice1 = tmp_path / "slice1.bin"
         slice1.write_bytes(b"Hello, World!")
 
         # Create entry with slice filter
@@ -39,23 +39,23 @@ class TestRecreateSlicedResource:
             filter_applied=SliceFilter(slices=[100]),  # resource_id 100 for slice
         )
 
-        save_dst = temp_dir / "output.bin"
+        save_dst = tmp_path / "output.bin"
 
         recreate_sliced_resource(entry, [slice1], save_dst)
 
         assert save_dst.exists()
         assert save_dst.read_bytes() == b"Hello, World!"
 
-    def test_recreate_sliced_resource_multiple_slices(self, temp_dir):
+    def test_recreate_sliced_resource_multiple_slices(self, tmp_path):
         """Test recreating resource from multiple slices."""
         # Create test slices
-        slice1 = temp_dir / "slice1.bin"
+        slice1 = tmp_path / "slice1.bin"
         slice1.write_bytes(b"Part 1 ")
 
-        slice2 = temp_dir / "slice2.bin"
+        slice2 = tmp_path / "slice2.bin"
         slice2.write_bytes(b"Part 2 ")
 
-        slice3 = temp_dir / "slice3.bin"
+        slice3 = tmp_path / "slice3.bin"
         slice3.write_bytes(b"Part 3")
 
         # Create entry with slice filter
@@ -66,7 +66,7 @@ class TestRecreateSlicedResource:
             filter_applied=SliceFilter(slices=[101, 102, 103]),  # 3 slice resource_ids
         )
 
-        save_dst = temp_dir / "output.bin"
+        save_dst = tmp_path / "output.bin"
 
         recreate_sliced_resource(entry, [slice1, slice2, slice3], save_dst)
 
@@ -75,13 +75,13 @@ class TestRecreateSlicedResource:
 
 
 class TestRecreateZstdCompressedResource:
-    def test_recreate_zstd_compressed_resource(self, temp_dir):
+    def test_recreate_zstd_compressed_resource(self, tmp_path):
         """Test recreating resource from zstd compressed file."""
         # Create original data
         original_data = b"This is test data for zstd compression. " * 10
 
         # Compress the data
-        compressed_file = temp_dir / "compressed.zst"
+        compressed_file = tmp_path / "compressed.zst"
         cctx = zstandard.ZstdCompressor()
         compressed_data = cctx.compress(original_data)
         compressed_file.write_bytes(compressed_data)
@@ -97,7 +97,7 @@ class TestRecreateZstdCompressedResource:
             ),
         )
 
-        save_dst = temp_dir / "output.bin"
+        save_dst = tmp_path / "output.bin"
         dctx = zstandard.ZstdDecompressor()
 
         recreate_zstd_compressed_resource(entry, compressed_file, save_dst, dctx)
@@ -105,13 +105,13 @@ class TestRecreateZstdCompressedResource:
         assert save_dst.exists()
         assert save_dst.read_bytes() == original_data
 
-    def test_recreate_zstd_compressed_resource_large_file(self, temp_dir):
+    def test_recreate_zstd_compressed_resource_large_file(self, tmp_path):
         """Test recreating resource from large zstd compressed file."""
         # Create larger original data
         original_data = b"Large test data. " * 1000  # ~17KB
 
         # Compress the data
-        compressed_file = temp_dir / "compressed_large.zst"
+        compressed_file = tmp_path / "compressed_large.zst"
         cctx = zstandard.ZstdCompressor()
         compressed_data = cctx.compress(original_data)
         compressed_file.write_bytes(compressed_data)
@@ -127,7 +127,7 @@ class TestRecreateZstdCompressedResource:
             ),
         )
 
-        save_dst = temp_dir / "output_large.bin"
+        save_dst = tmp_path / "output_large.bin"
         dctx = zstandard.ZstdDecompressor()
 
         recreate_zstd_compressed_resource(entry, compressed_file, save_dst, dctx)
