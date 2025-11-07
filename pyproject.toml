@@ -51,7 +51,7 @@ dev = [
 ]
 
 [tool.uv]
-required-version = ">=0.5.0,<0.9"
+required-version = ">=0.5.0,<1"
 
 [tool.hatch.version]
 source = "vcs"
@@ -124,3 +124,32 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.coverage.run]
+concurrency = [
+  "multiprocessing",
+  "thread",
+]
+branch = false
+relative_files = true
+parallel = true
+source = [
+  "ota_image_libs",
+  "ota_image_tools",
+]
+disable_warnings = [
+  "no-data-collected",
+  "module-not-measured",
+  "module-not-imported",
+]
+
+[tool.coverage.report]
+exclude_also = [
+  "def __repr__",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "class .*\\bProtocol\\):",
+  "@(abc\\.)?abstractmethod",
+]
+skip_empty = true
+skip_covered = true
