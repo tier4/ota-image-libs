@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from os import PathLike, path
+from pathlib import Path
 from typing import IO, Generator
 from zipfile import ZIP_STORED, ZipFile
 
@@ -121,3 +122,20 @@ class OTAImageArtifactReader:
             )
             return _image_config, _sys_config
         return _image_config, None
+
+    def get_file_table(self, _image_config: ImageConfig, _save_dst: Path) -> Path:
+        _ft_descriptor = _image_config.file_table
+        return _ft_descriptor.export_blob_from_bytes_stream(
+            self.open_blob(_ft_descriptor.digest.digest_hex),
+            _save_dst,
+            auto_decompress=True,
+        )
+
+    def get_resource_table(self, _image_index: ImageIndex, _save_dst: Path) -> Path:
+        if not (_descriptor := _image_index.image_resource_table):
+            raise ValueError("invalid OTA image, resource_table not found!")
+        return _descriptor.export_blob_from_bytes_stream(
+            self.open_blob(_descriptor.digest.digest_hex),
+            _save_dst,
+            auto_decompress=True,
+        )
