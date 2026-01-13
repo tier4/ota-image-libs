@@ -72,6 +72,7 @@ if sys.version_info >= (3, 11):
         2. all file entries have fixed permission bit and datetime set.
         3. all file entries have size less than ota-image-builder configured `CHUNK_SIZE`.
         4. the files are arranged in alphabet order.
+        5. the manifest of the OTA image artifact MUST be the index of the image.
 
         The OTA image artifact build is reproducible, the same artifact will always be
             generated from the same input OTA image.
