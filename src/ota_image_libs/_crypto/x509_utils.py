@@ -43,18 +43,23 @@ logger = logging.getLogger(__name__)
 MAX_CHAIN_LENGTH = 6
 
 
-def load_cert_from_x5c(data: bytes) -> Certificate:
+def load_cert_from_x5c(data: bytes | str) -> Certificate:
     """
     See https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.6.
+
+    But for compatibility concern, we also accept PEM format.
     """
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+
     if data.startswith(b"-----BEGIN CERTIFICATE-----"):
         return load_pem_x509_certificate(data)
 
     # see whether it is a base64 encoded DER, or a plain DER
     try:
-        _b64decoded = b64decode(data)
+        _b64decoded = b64decode(data, validate=True)
         return load_der_x509_certificate(_b64decoded)
-    except ValueError:
+    except Exception:
         return load_der_x509_certificate(data)
 
 
@@ -171,12 +176,11 @@ class X509CertChain:
         for raw_cert in data:
             if len(issuer_cert_map) >= MAX_CHAIN_LENGTH:
                 raise ValueError(f"Exceeded maximum chain length ({MAX_CHAIN_LENGTH})")
-            if isinstance(raw_cert, str):
-                cert = load_pem_x509_certificate(raw_cert.encode("utf-8"))
-            elif isinstance(raw_cert, bytes):
-                cert = load_pem_x509_certificate(raw_cert)
-            elif isinstance(raw_cert, Certificate):
+
+            if isinstance(raw_cert, Certificate):
                 cert = raw_cert
+            elif isinstance(raw_cert, (str, bytes)):
+                cert = load_cert_from_x5c(raw_cert)
             else:
                 raise ValueError("Invalid input cert")
 
