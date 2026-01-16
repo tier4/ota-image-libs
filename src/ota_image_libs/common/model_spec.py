@@ -24,9 +24,8 @@ from pydantic import BaseModel, ConfigDict, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 from typing_extensions import Self, TypeVarTuple, Unpack
 
-from ota_image_libs.common import ConstFieldMeta
-from ota_image_libs.common.model_fields import ConstFieldWithAltMeta
-from ota_image_libs.common.msgpack_utils import pack_obj, unpack_dict
+from .model_fields import ConstFieldWithAltMeta
+from .msgpack_utils import pack_obj, unpack_dict
 
 StrOrPath = Union[str, Path]
 AnnotationsField = Dict[str, Union[str, int, float, bool]]
@@ -112,7 +111,7 @@ class MsgPackedDict(Dict[str, bytes], PydanticFromBytesSchema):
 Ts = TypeVarTuple("Ts")
 
 
-class _ConstFieldWithAlt(Generic[Unpack[Ts]], metaclass=ConstFieldWithAltMeta):
+class _ConstField(Generic[Unpack[Ts]], metaclass=ConstFieldWithAltMeta):
     """Base class for defining field should have expected value, used in metadata schema.
 
     Different from `_ConstField`, when creating it can take a set of values, in which
@@ -127,44 +126,13 @@ class _ConstFieldWithAlt(Generic[Unpack[Ts]], metaclass=ConstFieldWithAltMeta):
 
     def __class_getitem__(cls, value: tuple[Any, ...] | Any):
         """Return a class with the expected schema version."""
-        # might be TypeVar, return an instance of GenericAlias
         if not isinstance(value, tuple):
-            return GenericAlias(cls, value)
+            value = (value,)
 
+        # might be TypeVar, return an instance of GenericAlias
         for _v in value:
             if not isinstance(_v, (int, str)):
-                return GenericAlias(cls, value)
-
-        _key = (cls.__name__, value)
-        if _key in _parameterized_const_field:
-            return _parameterized_const_field[_key]
-
-        # parameterize new schema version type
-        _new_type = type(f"{cls.__name__}[{value}]", (cls,), {"expected": value})
-        _parameterized_const_field[_key] = _new_type
-        return _new_type
-
-
-class _ConstField(Generic[T], metaclass=ConstFieldMeta):
-    """Base class for defining field should have expected value, used in metadata schema.
-
-    It can be parameterized with a specific value.
-    When pydantic validating the input, this class will check if the input value
-        matches the expected pre-defined value.
-    """
-
-    expected: T
-
-    def __class_getitem__(cls, value: int | str | Any):
-        """Return a class with the expected schema version."""
-        if isinstance(value, tuple):
-            raise TypeError(
-                f"{cls.__name__} can only be parameterized with single value."
-            )
-
-        # might be TypeVar, return an instance of GenericAlias
-        if not isinstance(value, (int, str)):
-            return GenericAlias(cls, value)
+                return GenericAlias(cls, *value)
 
         _key = (cls.__name__, value)
         if _key in _parameterized_const_field:
@@ -182,7 +150,7 @@ class SchemaVersion(_ConstField[T]): ...
 class MediaType(_ConstField[T]): ...
 
 
-class MediaTypeWithAlt(_ConstFieldWithAlt[Unpack[Ts]]): ...
+class MediaTypeWithAlt(_ConstField[Unpack[Ts]]): ...
 
 
 class ArtifactType(_ConstField[T]): ...
