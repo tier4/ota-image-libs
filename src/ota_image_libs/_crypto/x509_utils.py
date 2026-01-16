@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+from base64 import b64decode
 from typing import Any, Dict
 
 from cryptography.hazmat.primitives.serialization import Encoding
@@ -22,6 +23,7 @@ from cryptography.x509 import (
     BasicConstraints,
     Certificate,
     Name,
+    load_der_x509_certificate,
     load_pem_x509_certificate,
 )
 from cryptography.x509.verification import (
@@ -31,38 +33,33 @@ from cryptography.x509.verification import (
     Store,
 )
 from pydantic import (
-    ModelWrapValidatorHandler,
-    PlainSerializer,
-    WrapValidator,
     model_serializer,
     model_validator,
 )
-from typing_extensions import Annotated, Self
+from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
 MAX_CHAIN_LENGTH = 6
 
 
-def cert_from_pem_validator(
-    data: Any, handler: ModelWrapValidatorHandler[Certificate]
-) -> Certificate:
-    if isinstance(data, Certificate):
-        return data
-    if isinstance(data, str):
-        return load_pem_x509_certificate(data.encode("utf-8"))
-    return handler(data)
+def load_cert_from_x5c(data: bytes) -> Certificate:
+    """
+    See https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.6.
+    """
+    if data.startswith(b"-----BEGIN CERTIFICATE-----"):
+        return load_pem_x509_certificate(data)
+
+    # see whether it is a base64 encoded DER, or a plain DER
+    try:
+        _b64decoded = b64decode(data)
+        return load_der_x509_certificate(_b64decoded)
+    except ValueError:
+        return load_der_x509_certificate(data)
 
 
-def cert_to_pem_serializer(cert: Certificate) -> str:
-    return cert.public_bytes(Encoding.PEM).decode("utf-8")
-
-
-X509PEM = Annotated[
-    Certificate,
-    WrapValidator(cert_from_pem_validator),
-    PlainSerializer(cert_to_pem_serializer),
-]
+def cert_to_der_serializer(cert: Certificate) -> str:
+    return cert.public_bytes(Encoding.DER).decode("utf-8")
 
 
 class CACertStore(Dict[Name, Certificate]):
@@ -224,14 +221,18 @@ class X509CertChain:
     _pydantic_validator = model_validator(mode="wrap")(validator)
 
     def serializer(self) -> list[str]:
-        """Serialize the certificate chain to a list of PEM-encoded strings."""
+        """Serialize the certificate chain to a list of PEM-encoded strings.
+
+        NOTE(20260116): see https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.6,
+            the x5c header should contains the base64(not base64url) encoded DER format cert!
+        """
         result = []
         if self._ee is None:
             raise ValueError("End-entity certificate must be set")
-        result.append(cert_to_pem_serializer(self._ee))
+        result.append(cert_to_der_serializer(self._ee))
 
         for cert in self._interms:
-            result.append(cert_to_pem_serializer(cert))
+            result.append(cert_to_der_serializer(cert))
         return result
 
     _pydantic_serializer = model_serializer(mode="plain")(serializer)
