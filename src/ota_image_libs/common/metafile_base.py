@@ -29,7 +29,7 @@ from pydantic import (
 )
 from typing_extensions import Self
 
-from .model_fields import ConstFieldMeta, NotDefinedField
+from .model_fields import ConstFieldWithAltMeta, NotDefinedField
 from .oci_spec import OCIDescriptor, Sha256Digest
 
 MetaFile_T = TypeVar("MetaFile_T", bound="MetaFileBase")
@@ -111,7 +111,8 @@ class MetaFileBase(BaseModel):
     """
 
     model_config = ConfigDict(
-        populate_by_name=True, ignored_types=(ConstFieldMeta, NotDefinedField)
+        populate_by_name=True,
+        ignored_types=(ConstFieldWithAltMeta, NotDefinedField),
     )
 
     Descriptor: ClassVar[Type[MetaFileDescriptor]]
@@ -136,14 +137,10 @@ class MetaFileBase(BaseModel):
         """Validate external input, like parsing meta files."""
         assert isinstance(data, dict)
         if info.mode == "json":
-            if cls.SchemaVersion and cls.SchemaVersion != data.get("schemaVersion"):
-                raise ValueError(
-                    f"Expect schemaVersion {cls.SchemaVersion}, get {data.get('schemaVersion')}"
-                )
-            if cls.MediaType != data.get("mediaType"):
-                raise ValueError(
-                    f"Expect mediaType {cls.MediaType}, get {data.get('mediaType')}"
-                )
+            # bypass descriptor protocol
+            if cls.SchemaVersion:
+                cls.__dict__["SchemaVersion"].validate(data.get("schemaVersion"))
+            cls.__dict__["MediaType"].validate(data.get("mediaType"))
         return data
 
     @classmethod

@@ -22,9 +22,10 @@ from weakref import WeakValueDictionary
 
 from pydantic import BaseModel, ConfigDict, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
-from typing_extensions import Self
+from typing_extensions import Self, TypeVarTuple, Unpack
 
 from ota_image_libs.common import ConstFieldMeta
+from ota_image_libs.common.model_fields import ConstFieldWithAltMeta
 from ota_image_libs.common.msgpack_utils import pack_obj, unpack_dict
 
 StrOrPath = Union[str, Path]
@@ -108,6 +109,42 @@ class MsgPackedDict(Dict[str, bytes], PydanticFromBytesSchema):
         return pack_obj(self)
 
 
+Ts = TypeVarTuple("Ts")
+
+
+class _ConstFieldWithAlt(Generic[Unpack[Ts]], metaclass=ConstFieldWithAltMeta):
+    """Base class for defining field should have expected value, used in metadata schema.
+
+    Different from `_ConstField`, when creating it can take a set of values, in which
+        the first value should be the canonical value, the following values are alternatives
+        for validating the input.
+
+    When pydantic validating the input, this class will check if the input value
+        matches at least one of the expected pre-defined value.
+    """
+
+    expected: tuple[Unpack[Ts]]
+
+    def __class_getitem__(cls, value: tuple[Any, ...] | Any):
+        """Return a class with the expected schema version."""
+        # might be TypeVar, return an instance of GenericAlias
+        if not isinstance(value, tuple):
+            return GenericAlias(cls, value)
+
+        for _v in value:
+            if not isinstance(_v, (int, str)):
+                return GenericAlias(cls, value)
+
+        _key = (cls.__name__, value)
+        if _key in _parameterized_const_field:
+            return _parameterized_const_field[_key]
+
+        # parameterize new schema version type
+        _new_type = type(f"{cls.__name__}[{value}]", (cls,), {"expected": value})
+        _parameterized_const_field[_key] = _new_type
+        return _new_type
+
+
 class _ConstField(Generic[T], metaclass=ConstFieldMeta):
     """Base class for defining field should have expected value, used in metadata schema.
 
@@ -121,7 +158,9 @@ class _ConstField(Generic[T], metaclass=ConstFieldMeta):
     def __class_getitem__(cls, value: int | str | Any):
         """Return a class with the expected schema version."""
         if isinstance(value, tuple):
-            raise TypeError(f"{cls.__name__} cannot be parameterized with single type.")
+            raise TypeError(
+                f"{cls.__name__} can only be parameterized with single value."
+            )
 
         # might be TypeVar, return an instance of GenericAlias
         if not isinstance(value, (int, str)):
@@ -141,6 +180,9 @@ class SchemaVersion(_ConstField[T]): ...
 
 
 class MediaType(_ConstField[T]): ...
+
+
+class MediaTypeWithAlt(_ConstFieldWithAlt[Unpack[Ts]]): ...
 
 
 class ArtifactType(_ConstField[T]): ...
