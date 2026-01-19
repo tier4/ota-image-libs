@@ -34,7 +34,6 @@ from ota_image_libs.common.oci_spec import Sha256Digest
 from ota_image_libs.v1.image_index.schema import ImageIndex
 
 
-@pytest.fixture(scope="session")
 def ecdsa_keypair() -> tuple[EllipticCurvePrivateKey, EllipticCurvePublicKey]:
     """Generate ECDSA key pair for testing."""
     private_key = ec.generate_private_key(ec.SECP256R1())
@@ -43,11 +42,9 @@ def ecdsa_keypair() -> tuple[EllipticCurvePrivateKey, EllipticCurvePublicKey]:
 
 
 @pytest.fixture(scope="session")
-def root_ca_cert(
-    ecdsa_keypair: tuple[EllipticCurvePrivateKey, EllipticCurvePublicKey],
-) -> tuple[Certificate, EllipticCurvePrivateKey]:
+def root_ca_cert() -> tuple[Certificate, EllipticCurvePrivateKey]:
     """Generate a self-signed root CA certificate."""
-    private_key, public_key = ecdsa_keypair
+    private_key, public_key = ecdsa_keypair()
 
     subject = issuer = x509.Name(
         [
@@ -84,7 +81,7 @@ def intermediate_ca_cert(
     root_cert, root_key = root_ca_cert
 
     # Generate new key for intermediate CA
-    intermediate_key = ec.generate_private_key(ec.SECP256R1())
+    intermediate_key, _ = ecdsa_keypair()
 
     subject = x509.Name(
         [
@@ -119,7 +116,7 @@ def end_entity_cert(intermediate_ca_cert):
     intermediate_cert, intermediate_key = intermediate_ca_cert
 
     # Generate new key for end-entity
-    ee_key = ec.generate_private_key(ec.SECP256R1())
+    ee_key, _ = ecdsa_keypair()
 
     subject = x509.Name(
         [
