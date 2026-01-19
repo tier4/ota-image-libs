@@ -15,7 +15,7 @@
 
 from ._common import tmp_fname
 from .metafile_base import MetaFileBase, MetaFileDescriptor
-from .model_fields import ConstFieldMeta
+from .model_fields import ConstFieldWithAltMeta
 from .model_spec import (
     AliasEnabledModel,
     MediaType,
@@ -33,6 +33,6 @@ __all__ = [
     "OCIDescriptor",
     "MetaFileDescriptor",
     "Sha256Digest",
-    "ConstFieldMeta",
+    "ConstFieldWithAltMeta",
     "tmp_fname",
 ]

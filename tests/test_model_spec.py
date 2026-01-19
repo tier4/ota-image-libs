@@ -15,10 +15,7 @@
 import pytest
 from pydantic import BaseModel
 
-from ota_image_libs.common.model_spec import (
-    MsgPackedDict,
-    SchemaVersion,
-)
+from ota_image_libs.common import MsgPackedDict
 from ota_image_libs.common.msgpack_utils import pack_obj
 
 
@@ -70,13 +67,6 @@ class TestMsgPackedDict:
             MsgPackedDict.bytes_schema_validator(packed_bytes)
 
 
-class TestConstField:
-    def test_const_field_tuple_raises_error(self):
-        """Test that parameterizing with tuple raises TypeError."""
-        with pytest.raises(TypeError):
-            SchemaVersion[1, 2]
-
-
 class TestPydanticIntegration:
     def test_msgpacked_dict_in_pydantic_model(self):
         """Test using MsgPackedDict in a Pydantic model."""
@@ -88,7 +78,7 @@ class TestPydanticIntegration:
         packed_bytes = pack_obj(test_dict)
 
         # Test from bytes
-        model = TestModel(data=packed_bytes)
+        model = TestModel.model_validate({"data": packed_bytes})
         assert isinstance(model.data, MsgPackedDict)
         assert model.data["key1"] == b"value1"
 
