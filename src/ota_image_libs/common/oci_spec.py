@@ -212,7 +212,7 @@ class OCIDescriptor(BaseModel):
             resource_dir (Path): The directory where the blob will be stored.
             remove_origin (bool): If True, remove the original file after adding it to the resource directory.
             annotations (dict[str, Any] | None): Optional annotations to be added to the descriptor. Default is None.
-            zstd_compression_level (int): If specified as int, use zstd compression with the given level.
+            zstd_compression_level (int | zstandard.ZstdCompressor): If specified as int, use zstd compression with the given level.
                 For advanced configuration, can be set as an instance of `zstandard.ZstdCompressor`. Default is 3.
         """
         _media_type: str = cls.MediaType
