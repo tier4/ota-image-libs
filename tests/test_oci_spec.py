@@ -15,6 +15,7 @@
 from typing import ClassVar
 
 import pytest
+import zstandard
 
 from ota_image_libs.common.oci_spec import OCIDescriptor, Sha256Digest
 
@@ -285,6 +286,32 @@ class TestOCIDescriptorZstd:
 
         descriptor = ZstdOCIDescriptor.add_file_to_resource_dir(
             src_file, resource_dir, zstd_compression_level=5
+        )
+
+        # Compressed size should be smaller than original
+        assert descriptor.size < len(test_content)
+
+        # Verify blob exists
+        blob_path = resource_dir / descriptor.digest.digest_hex
+        assert blob_path.exists()
+
+    def test_add_file_with_zstd_compression_custom_compressor(self, tmp_path):
+        """Test adding file with zstd compression, with custom compressor."""
+        resource_dir = tmp_path / "resources"
+        resource_dir.mkdir()
+        src_file = tmp_path / "test.txt"
+        test_content = b"test content " * 100  # Repeatable content compresses well
+        src_file.write_bytes(test_content)
+
+        descriptor = ZstdOCIDescriptor.add_file_to_resource_dir(
+            src_file,
+            resource_dir,
+            zstd_compression_level=zstandard.ZstdCompressor(
+                level=5,
+                threads=3,
+                write_checksum=True,
+                write_content_size=True,
+            ),
         )
 
         # Compressed size should be smaller than original
