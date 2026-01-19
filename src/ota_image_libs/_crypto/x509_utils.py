@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 from base64 import b64decode
 from typing import Any, Dict
@@ -63,8 +64,10 @@ def load_cert_from_x5c(data: bytes | str) -> Certificate:
         return load_der_x509_certificate(data)
 
 
-def cert_to_der_serializer(cert: Certificate) -> str:
-    return cert.public_bytes(Encoding.DER).decode("utf-8")
+def cert_to_b64_encoded_der_serializer(cert: Certificate) -> str:
+    """Serialize a x509 certificate as base64 encoded DER."""
+    _der_bytes = base64.b64decode(cert.public_bytes(Encoding.DER))
+    return _der_bytes.decode("utf-8")
 
 
 class CACertStore(Dict[Name, Certificate]):
@@ -170,7 +173,7 @@ class X509CertChainBase:
 class X5cX509CertChain(X509CertChainBase):
     """Subclass of X509CertChain, for parsing from and exporting to x5c header.
 
-    Although x5c header supposes to stor base64 encoded DERs, for backward compatibility,
+    Although x5c header supposes to store base64 encoded DERs, for backward compatibility,
         we also support parsing PEM or raw DER.
     """
 
@@ -241,10 +244,10 @@ class X5cX509CertChain(X509CertChainBase):
         result = []
         if self._ee is None:
             raise ValueError("End-entity certificate must be set")
-        result.append(cert_to_der_serializer(self._ee))
+        result.append(cert_to_b64_encoded_der_serializer(self._ee))
 
         for cert in self._interms:
-            result.append(cert_to_der_serializer(cert))
+            result.append(cert_to_b64_encoded_der_serializer(cert))
         return result
 
     _pydantic_serializer = model_serializer(mode="plain")(serializer)
