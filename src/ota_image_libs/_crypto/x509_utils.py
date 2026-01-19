@@ -66,7 +66,7 @@ def load_cert_from_x5c(data: bytes | str) -> Certificate:
 
 def cert_to_b64_encoded_der_serializer(cert: Certificate) -> str:
     """Serialize a x509 certificate as base64 encoded DER."""
-    _der_bytes = base64.b64decode(cert.public_bytes(Encoding.DER))
+    _der_bytes = base64.b64encode(cert.public_bytes(Encoding.DER))
     return _der_bytes.decode("utf-8")
 
 
