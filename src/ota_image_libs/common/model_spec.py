@@ -112,14 +112,13 @@ Ts = TypeVarTuple("Ts")
 
 
 class _ConstField(Generic[Unpack[Ts]], metaclass=ConstFieldWithAltMeta):
-    """Base class for defining field should have expected value, used in metadata schema.
+    """Base class for defining field should have expected value,
+        optionally with one or more aliases.
 
-    Different from `_ConstField`, when creating it can take a set of values, in which
-        the first value should be the canonical value, the following values are alternatives
-        for validating the input.
-
-    When pydantic validating the input, this class will check if the input value
+    When pydantic validates the input, this class will check if the input value
         matches at least one of the expected pre-defined value.
+    When pydantic serializes the corresponding model, only the canonical value
+        will be used.
     """
 
     expected: tuple[Unpack[Ts]]
