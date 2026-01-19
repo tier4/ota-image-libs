@@ -253,4 +253,5 @@ class X5cX509CertChain(X509CertChainBase):
     _pydantic_serializer = model_serializer(mode="plain")(serializer)
 
 
-X509CertChain = deprecated("use X5cX509CertChain instead")(X5cX509CertChain)
+@deprecated("use X5cX509CertChain instead")
+class X509CertChain(X5cX509CertChain): ...
