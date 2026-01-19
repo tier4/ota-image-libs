@@ -200,7 +200,7 @@ class OCIDescriptor(BaseModel):
         *,
         remove_origin: bool = False,
         annotations: dict[str, Any] | None = None,
-        zstd_compression_level: int = 3,
+        zstd_compression_level: int | zstandard.ZstdCompressor = 3,
     ) -> Self:
         """Add <fpath> as a blob into <resource_dir> and return an OCIDescriptor.
 
@@ -212,7 +212,8 @@ class OCIDescriptor(BaseModel):
             resource_dir (Path): The directory where the blob will be stored.
             remove_origin (bool): If True, remove the original file after adding it to the resource directory.
             annotations (dict[str, Any] | None): Optional annotations to be added to the descriptor. Default is None.
-            zstd_compression_level (int): If specified, use zstd compression with the given level. Default is 3.
+            zstd_compression_level (int): If specified as int, use zstd compression with the given level.
+                For advanced configuration, can be set as an instance of `zstandard.ZstdCompressor`. Default is 3.
         """
         _media_type: str = cls.MediaType
         if not _media_type:
@@ -224,7 +225,11 @@ class OCIDescriptor(BaseModel):
             _hasher = cls.supported_digest_impl()
             with open(src, "rb") as _src, open(_tmp_fpath, "wb") as _dst:
                 if _media_type.endswith("+zstd"):
-                    cctx = zstandard.ZstdCompressor(level=zstd_compression_level)
+                    if isinstance(zstd_compression_level, int):
+                        cctx = zstandard.ZstdCompressor(level=zstd_compression_level)
+                    else:
+                        cctx = zstd_compression_level
+
                     for _chunk in cctx.read_to_iter(_src):
                         _hasher.update(_chunk)
                         _file_size += _dst.write(_chunk)
