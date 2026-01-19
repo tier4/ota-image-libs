@@ -23,12 +23,12 @@ import yaml
 from pydantic import (
     BaseModel,
     ConfigDict,
-    ValidationInfo,
     computed_field,
     model_validator,
 )
 from typing_extensions import Self
 
+from ._common import metafile_before_validator
 from .model_fields import ConstFieldWithAltMeta, NotDefinedField
 from .oci_spec import OCIDescriptor, Sha256Digest
 
@@ -133,15 +133,8 @@ class MetaFileBase(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _external_input_validator(cls, data: Any, info: ValidationInfo) -> Any:
-        """Validate external input, like parsing meta files."""
-        assert isinstance(data, dict)
-        if info.mode == "json":
-            # bypass descriptor protocol
-            if cls.SchemaVersion:
-                cls.__dict__["SchemaVersion"].validate(data.get("schemaVersion"))
-            cls.__dict__["MediaType"].validate(data.get("mediaType"))
-        return data
+    def _external_input_validator(cls, data, info) -> Any:
+        return metafile_before_validator(cls, data, info)
 
     @classmethod
     def parse_metafile(cls, _input: str) -> Self:

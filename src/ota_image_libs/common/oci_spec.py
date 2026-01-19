@@ -26,14 +26,13 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     GetCoreSchemaHandler,
-    ValidationInfo,
     computed_field,
     model_validator,
 )
 from pydantic_core import CoreSchema, core_schema
 from typing_extensions import Self
 
-from ._common import tmp_fname
+from ._common import oci_descriptor_before_validator, tmp_fname
 from .model_fields import ConstFieldWithAltMeta, NotDefinedField
 
 logger = logging.getLogger(__name__)
@@ -148,15 +147,8 @@ class OCIDescriptor(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _external_input_validator(cls, data: Any, info: ValidationInfo) -> Any:
-        """Validate external input, like parsing meta files."""
-        assert isinstance(data, dict)
-        if info.mode == "json":
-            # bypass descriptor protocol
-            if cls.ArtifactType:
-                cls.__dict__["ArtifactType"].validate(data.get("artifactType"))
-            cls.__dict__["MediaType"].validate(data.get("mediaType"))
-        return data
+    def _external_input_validator(cls, data, info) -> Any:
+        return oci_descriptor_before_validator(cls, data, info)
 
     @classmethod
     def _validate_annotations(cls, annotations: dict[str, Any]):

@@ -37,6 +37,9 @@ class NotDefinedField:
             f"cannot set {self.field_name} on {obj} as this field is not defined"
         )
 
+    def validate(self, _input: Any):
+        pass  # for NotDefinedField, we don't need to do any validation
+
 
 class ConstFieldWithAltMeta(type):
     """Meta class for ConstFieldWithAlt.
