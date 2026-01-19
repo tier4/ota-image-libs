@@ -36,7 +36,7 @@ from pydantic import (
     model_serializer,
     model_validator,
 )
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ class CACertStore(Dict[Name, Certificate]):
             raise ValueError(f"Sign certificate verification failed: {e}") from e
 
 
-class X509CertChain:
+class X509CertChainBase:
     """Represents a chain of X.509 certificates."""
 
     def __init__(self) -> None:
@@ -165,6 +165,14 @@ class X509CertChain:
                 f"Reject adding more than {MAX_CHAIN_LENGTH} intermediate certs"
             )
         self._interms.extend(certs)
+
+
+class X5cX509CertChain(X509CertChainBase):
+    """Subclass of X509CertChain, for parsing from and exporting to x5c header.
+
+    Although x5c header supposes to stor base64 encoded DERs, for backward compatibility,
+        we also support parsing PEM or raw DER.
+    """
 
     @classmethod
     def validator(cls, data: Any, handler: Any = None) -> Self:
@@ -225,7 +233,7 @@ class X509CertChain:
     _pydantic_validator = model_validator(mode="wrap")(validator)
 
     def serializer(self) -> list[str]:
-        """Serialize the certificate chain to a list of PEM-encoded strings.
+        """Serialize the certificate chain to a list of base64 encoded DER x509 certs.
 
         NOTE(20260116): see https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.6,
             the x5c header should contains the base64(not base64url) encoded DER format cert!
@@ -240,3 +248,6 @@ class X509CertChain:
         return result
 
     _pydantic_serializer = model_serializer(mode="plain")(serializer)
+
+
+X509CertChain = deprecated("use X5cX509CertChain instead")(X5cX509CertChain)
