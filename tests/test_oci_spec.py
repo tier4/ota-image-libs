@@ -290,10 +290,10 @@ class TestOCIDescriptorZstd:
             )
         ),
     )
-    def test_add_file_with_zstd_custom_compressor(
+    def test_add_file_with_zstd_compression(
         self, tmp_path, auto_decompress: bool, compress_level
     ):
-        """Test adding file with zstd compression, with custom compressor."""
+        """Test adding file with zstd compression (int levels and custom compressors)."""
         resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
         src_file = tmp_path / "test.txt"
