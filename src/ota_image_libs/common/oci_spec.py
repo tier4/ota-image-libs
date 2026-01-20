@@ -190,7 +190,7 @@ class OCIDescriptor(BaseModel):
         annotations: dict[str, Any] | None = None,
         zstd_compression_level: int | zstandard.ZstdCompressor = 3,
     ) -> Self:
-        """Add <fpath> as a blob into <resource_dir> and return an OCIDescriptor.
+        """Add `src` as a blob into `resource_dir` and return the corresponding descriptor.
 
         This method supports transparently compressing file with zstd if the mediaType
             indicates the blob should be zstd compressed.
