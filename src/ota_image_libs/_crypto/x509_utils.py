@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import warnings
 from base64 import b64decode
 from typing import Any, Dict
 
@@ -54,6 +55,14 @@ def load_cert_from_x5c(data: bytes | str) -> Certificate:
         data = data.encode("utf-8")
 
     if data.startswith(b"-----BEGIN CERTIFICATE-----"):
+        warnings.warn(
+            (
+                "detect x5c header that doesn't align with RFC7517, "
+                "expects cert serialized into base64 DER, get PEM"
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return load_pem_x509_certificate(data)
 
     # see whether it is a base64 encoded DER, or a plain DER
@@ -61,6 +70,14 @@ def load_cert_from_x5c(data: bytes | str) -> Certificate:
         _b64decoded = b64decode(data, validate=True)
         return load_der_x509_certificate(_b64decoded)
     except Exception:
+        warnings.warn(
+            (
+                "detect x5c header that doesn't align with RFC7517, "
+                "expects cert serialized into base64 DER, get raw DER"
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return load_der_x509_certificate(data)
 
 
