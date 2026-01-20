@@ -14,7 +14,10 @@
 
 from __future__ import annotations
 
+import base64
 import logging
+import warnings
+from base64 import b64decode
 from typing import Any, Dict
 
 from cryptography.hazmat.primitives.serialization import Encoding
@@ -22,6 +25,7 @@ from cryptography.x509 import (
     BasicConstraints,
     Certificate,
     Name,
+    load_der_x509_certificate,
     load_pem_x509_certificate,
 )
 from cryptography.x509.verification import (
@@ -31,38 +35,56 @@ from cryptography.x509.verification import (
     Store,
 )
 from pydantic import (
-    ModelWrapValidatorHandler,
-    PlainSerializer,
-    WrapValidator,
     model_serializer,
     model_validator,
 )
-from typing_extensions import Annotated, Self
+from typing_extensions import Self, deprecated
 
 logger = logging.getLogger(__name__)
 
 MAX_CHAIN_LENGTH = 6
 
 
-def cert_from_pem_validator(
-    data: Any, handler: ModelWrapValidatorHandler[Certificate]
-) -> Certificate:
-    if isinstance(data, Certificate):
-        return data
+def load_cert_from_x5c(data: bytes | str) -> Certificate:
+    """
+    See https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.6.
+
+    But for compatibility concern, we also accept PEM format.
+    """
     if isinstance(data, str):
-        return load_pem_x509_certificate(data.encode("utf-8"))
-    return handler(data)
+        data = data.encode("utf-8")
+
+    if data.startswith(b"-----BEGIN CERTIFICATE-----"):
+        warnings.warn(
+            (
+                "detect x5c header that doesn't align with RFC7517, "
+                "expects cert serialized into base64 DER, get PEM"
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return load_pem_x509_certificate(data)
+
+    # see whether it is a base64 encoded DER, or a plain DER
+    try:
+        _b64decoded = b64decode(data, validate=True)
+        return load_der_x509_certificate(_b64decoded)
+    except Exception:
+        warnings.warn(
+            (
+                "detect x5c header that doesn't align with RFC7517, "
+                "expects cert serialized into base64 DER, get raw DER"
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return load_der_x509_certificate(data)
 
 
-def cert_to_pem_serializer(cert: Certificate) -> str:
-    return cert.public_bytes(Encoding.PEM).decode("utf-8")
-
-
-X509PEM = Annotated[
-    Certificate,
-    WrapValidator(cert_from_pem_validator),
-    PlainSerializer(cert_to_pem_serializer),
-]
+def cert_to_b64_encoded_der_serializer(cert: Certificate) -> str:
+    """Serialize a x509 certificate as base64 encoded DER."""
+    _der_bytes = base64.b64encode(cert.public_bytes(Encoding.DER))
+    return _der_bytes.decode("utf-8")
 
 
 class CACertStore(Dict[Name, Certificate]):
@@ -128,7 +150,7 @@ class CACertStore(Dict[Name, Certificate]):
             raise ValueError(f"Sign certificate verification failed: {e}") from e
 
 
-class X509CertChain:
+class X509CertChainBase:
     """Represents a chain of X.509 certificates."""
 
     def __init__(self) -> None:
@@ -164,6 +186,14 @@ class X509CertChain:
             )
         self._interms.extend(certs)
 
+
+class X5cX509CertChain(X509CertChainBase):
+    """Subclass of X509CertChain, for parsing from and exporting to x5c header.
+
+    Although x5c header supposes to store base64 encoded DERs, for backward compatibility,
+        we also support parsing PEM or raw DER.
+    """
+
     @classmethod
     def validator(cls, data: Any, handler: Any = None) -> Self:
         if not isinstance(data, list):
@@ -174,12 +204,11 @@ class X509CertChain:
         for raw_cert in data:
             if len(issuer_cert_map) >= MAX_CHAIN_LENGTH:
                 raise ValueError(f"Exceeded maximum chain length ({MAX_CHAIN_LENGTH})")
-            if isinstance(raw_cert, str):
-                cert = load_pem_x509_certificate(raw_cert.encode("utf-8"))
-            elif isinstance(raw_cert, bytes):
-                cert = load_pem_x509_certificate(raw_cert)
-            elif isinstance(raw_cert, Certificate):
+
+            if isinstance(raw_cert, Certificate):
                 cert = raw_cert
+            elif isinstance(raw_cert, (str, bytes)):
+                cert = load_cert_from_x5c(raw_cert)
             else:
                 raise ValueError("Invalid input cert")
 
@@ -224,14 +253,22 @@ class X509CertChain:
     _pydantic_validator = model_validator(mode="wrap")(validator)
 
     def serializer(self) -> list[str]:
-        """Serialize the certificate chain to a list of PEM-encoded strings."""
+        """Serialize the certificate chain to a list of base64 encoded DER x509 certs.
+
+        NOTE(20260116): see https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.6,
+            the x5c header should contains the base64(not base64url) encoded DER format cert!
+        """
         result = []
         if self._ee is None:
             raise ValueError("End-entity certificate must be set")
-        result.append(cert_to_pem_serializer(self._ee))
+        result.append(cert_to_b64_encoded_der_serializer(self._ee))
 
         for cert in self._interms:
-            result.append(cert_to_pem_serializer(cert))
+            result.append(cert_to_b64_encoded_der_serializer(cert))
         return result
 
     _pydantic_serializer = model_serializer(mode="plain")(serializer)
+
+
+@deprecated("use X5cX509CertChain instead")
+class X509CertChain(X5cX509CertChain): ...

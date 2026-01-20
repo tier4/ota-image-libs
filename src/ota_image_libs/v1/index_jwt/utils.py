@@ -33,7 +33,7 @@ from ota_image_libs._crypto.jwt_utils import (
     get_unverified_jwt_headers,
     get_verified_jwt_payload,
 )
-from ota_image_libs._crypto.x509_utils import X509CertChain
+from ota_image_libs._crypto.x509_utils import X5cX509CertChain
 from ota_image_libs.v1.consts import ALLOWED_JWT_ALG
 
 from .schema import ImageIndex, IndexJWTClaims
@@ -44,7 +44,7 @@ X5C_FNAME = "x5c"
 def compose_index_jwt(
     index_descriptor: ImageIndex.Descriptor,
     *,
-    sign_cert_chain: X509CertChain,
+    sign_cert_chain: X5cX509CertChain,
     sign_key: bytes,
     sign_key_passwd: bytes | None = None,
 ) -> str:
@@ -57,7 +57,7 @@ def compose_index_jwt(
     Args:
         index_json_digest (bytes): The digest of the index.json.
         index_json_size (int): The size of the index.json.
-        sign_cert_chain (X509CertChain): The certificate chain used for signing.
+        sign_cert_chain (X5cX509CertChain): The certificate chain used for signing.
         sign_key (bytes): The private key used for signing.
 
     Returns:
@@ -89,7 +89,7 @@ def compose_index_jwt(
     )
 
 
-def get_index_jwt_sign_cert_chain(_input: str) -> X509CertChain:
+def get_index_jwt_sign_cert_chain(_input: str) -> X5cX509CertChain:
     """
     Extract the signing certificate chain from index.jwt.
 
@@ -116,11 +116,11 @@ def get_index_jwt_sign_cert_chain(_input: str) -> X509CertChain:
             f"{X5C_FNAME} header MUST be a list of PEM-encoded certificates"
         )
 
-    return X509CertChain.validator(x5c)
+    return X5cX509CertChain.validator(x5c)
 
 
 def decode_index_jwt_with_verification(
-    _input: str, sign_cert: X509CertChain
+    _input: str, sign_cert: X5cX509CertChain
 ) -> IndexJWTClaims:
     """Decode index.jwt and verify the signature.
 
