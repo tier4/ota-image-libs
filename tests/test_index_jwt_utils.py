@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from cryptography import x509
@@ -124,7 +124,8 @@ class TestIndexJWTUtils:
         from ota_image_libs.v1.index_jwt.schema import IndexJWTClaims
 
         claims = IndexJWTClaims(
-            iat=int(datetime.utcnow().timestamp()), image_index=image_descriptor
+            iat=int(datetime.now(timezone.utc).timestamp()),
+            image_index=image_descriptor,
         )
 
         # Manually compose JWT with PEM certs
@@ -353,8 +354,8 @@ class TestDecodeIndexJwtWithVerification:
             .issuer_name(different_issuer)
             .public_key(different_key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.utcnow())
-            .not_valid_after(datetime.utcnow() + timedelta(days=90))
+            .not_valid_before(datetime.now(timezone.utc))
+            .not_valid_after(datetime.now(timezone.utc) + timedelta(days=90))
             .sign(different_key, hashes.SHA256())
         )
 
@@ -390,7 +391,7 @@ class TestDecodeIndexJwtWithVerification:
             size=7777,
         )
         claims = IndexJWTClaims(
-            iat=int(datetime.utcnow().timestamp()),
+            iat=int(datetime.now(timezone.utc).timestamp()),
             image_index=descriptor,
         )
 

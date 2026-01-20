@@ -14,7 +14,7 @@
 """Tests for x509_utils module."""
 
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from cryptography import x509
@@ -175,8 +175,8 @@ class TestCACertStore:
             .issuer_name(different_root_subject)
             .public_key(different_root_key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.utcnow())
-            .not_valid_after(datetime.utcnow() + timedelta(days=365))
+            .not_valid_before(datetime.now(timezone.utc))
+            .not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
             .add_extension(
                 x509.BasicConstraints(ca=True, path_length=None),
                 critical=True,
@@ -303,8 +303,8 @@ class TestX5cX509CertChain:
             .issuer_name(unrelated_issuer)
             .public_key(unrelated_key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.utcnow())
-            .not_valid_after(datetime.utcnow() + timedelta(days=90))
+            .not_valid_before(datetime.now(timezone.utc))
+            .not_valid_after(datetime.now(timezone.utc) + timedelta(days=90))
             .sign(unrelated_key, hashes.SHA256())
         )
 
@@ -332,8 +332,8 @@ class TestX5cX509CertChain:
                 .issuer_name(prev_subject)
                 .public_key(key.public_key())
                 .serial_number(x509.random_serial_number())
-                .not_valid_before(datetime.utcnow())
-                .not_valid_after(datetime.utcnow() + timedelta(days=90))
+                .not_valid_before(datetime.now(timezone.utc))
+                .not_valid_after(datetime.now(timezone.utc) + timedelta(days=90))
                 .sign(prev_key, hashes.SHA256())
             )
             certs.append(cert)
