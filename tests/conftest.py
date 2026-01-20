@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 
 import pytest
@@ -61,8 +61,8 @@ def root_ca_cert() -> tuple[Certificate, EllipticCurvePrivateKey]:
         .issuer_name(issuer)
         .public_key(public_key)
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.utcnow())
-        .not_valid_after(datetime.utcnow() + timedelta(days=365))
+        .not_valid_before(datetime.now(timezone.utc))
+        .not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
         .add_extension(
             x509.BasicConstraints(ca=True, path_length=None),
             critical=True,
@@ -98,8 +98,8 @@ def intermediate_ca_cert(
         .issuer_name(root_cert.subject)
         .public_key(intermediate_key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.utcnow())
-        .not_valid_after(datetime.utcnow() + timedelta(days=180))
+        .not_valid_before(datetime.now(timezone.utc))
+        .not_valid_after(datetime.now(timezone.utc) + timedelta(days=180))
         .add_extension(
             x509.BasicConstraints(ca=True, path_length=0),
             critical=True,
@@ -133,8 +133,8 @@ def end_entity_cert(intermediate_ca_cert):
         .issuer_name(intermediate_cert.subject)
         .public_key(ee_key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.utcnow())
-        .not_valid_after(datetime.utcnow() + timedelta(days=90))
+        .not_valid_before(datetime.now(timezone.utc))
+        .not_valid_after(datetime.now(timezone.utc) + timedelta(days=90))
         .sign(intermediate_key, hashes.SHA256())
     )
 
