@@ -6,15 +6,20 @@ from pydantic import BaseModel, Field
 
 from ota_image_libs.common.metafile_base import MetaFileBase, MetaFileDescriptor
 from ota_image_libs.common.model_spec import MediaTypeWithAlt as MediaTypeWithAltT
-from ota_image_libs.v1.media_types import SYS_CONFIG_YAML, SYS_CONFIG_YAML_INCORRECT
+from ota_image_libs.v1.media_types import (
+    SYS_CONFIG_YAML,
+    SYS_CONFIG_YAML_BACKWARD_COMPATIBLE,
+)
 
 
 class SysConfig(MetaFileBase):
     # NOTE(20260116): for fixing the issue of using wrong media_type previously.
     class Descriptor(MetaFileDescriptor["SysConfig"]):
-        MediaType = MediaTypeWithAltT[SYS_CONFIG_YAML, SYS_CONFIG_YAML_INCORRECT]
+        MediaType = MediaTypeWithAltT[
+            SYS_CONFIG_YAML, SYS_CONFIG_YAML_BACKWARD_COMPATIBLE
+        ]
 
-    MediaType = MediaTypeWithAltT[SYS_CONFIG_YAML, SYS_CONFIG_YAML_INCORRECT]
+    MediaType = MediaTypeWithAltT[SYS_CONFIG_YAML, SYS_CONFIG_YAML_BACKWARD_COMPATIBLE]
 
     hostname: str
     extra_mount: Union[List[MountCfg], None] = None

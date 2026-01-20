@@ -32,7 +32,7 @@ OTA_IMAGE_FILETABLE_ZSTD = "application/vnd.tier4.ota.file-based-ota-image.file_
 OTA_IMAGE_RESOURCETABLE = "application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3"
 OTA_IMAGE_RESOURCETABLE_ZSTD = "application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3+zstd"
 OTA_IMAGE_CONFIG_JSON = "application/vnd.tier4.ota.file-based-ota-image.config.v1+json"
-SYS_CONFIG_YAML_INCORRECT = "application/vnd.tier4.ota.file-based-ota-image.config.v1+yaml"
+SYS_CONFIG_YAML_BACKWARD_COMPATIBLE = "application/vnd.tier4.ota.file-based-ota-image.config.v1+yaml"
 SYS_CONFIG_YAML = "application/vnd.tier4.ota.sys-config.v1+yaml"
 
 #
