@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import itertools
 from typing import ClassVar
 
 import pytest
@@ -276,27 +277,23 @@ class ZstdOCIDescriptor(OCIDescriptor):
 
 
 class TestOCIDescriptorZstd:
-    def test_add_file_with_zstd_compression(self, tmp_path):
-        """Test adding file with zstd compression."""
-        resource_dir = tmp_path / "resources"
-        resource_dir.mkdir()
-        src_file = tmp_path / "test.txt"
-        test_content = b"test content " * 100  # Repeatable content compresses well
-        src_file.write_bytes(test_content)
-
-        descriptor = ZstdOCIDescriptor.add_file_to_resource_dir(
-            src_file, resource_dir, zstd_compression_level=5
-        )
-
-        # Compressed size should be smaller than original
-        assert descriptor.size < len(test_content)
-
-        # Verify blob exists
-        blob_path = resource_dir / descriptor.digest.digest_hex
-        assert blob_path.exists()
-
-    def test_add_file_with_zstd_compression_custom_compressor(self, tmp_path):
-        """Test adding file with zstd compression, with custom compressor."""
+    @pytest.mark.parametrize(
+        "auto_decompress, compress_level",
+        tuple(
+            itertools.product(
+                (True, False),
+                (
+                    6,
+                    zstandard.ZstdCompressor(level=6),
+                    zstandard.ZstdCompressor(level=6, write_checksum=True),
+                ),
+            )
+        ),
+    )
+    def test_add_file_with_zstd_compression(
+        self, tmp_path, auto_decompress: bool, compress_level
+    ):
+        """Test adding file with zstd compression (int levels and custom compressors)."""
         resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
         src_file = tmp_path / "test.txt"
@@ -306,35 +303,19 @@ class TestOCIDescriptorZstd:
         descriptor = ZstdOCIDescriptor.add_file_to_resource_dir(
             src_file,
             resource_dir,
-            zstd_compression_level=zstandard.ZstdCompressor(
-                level=5,
-                threads=3,
-                write_checksum=True,
-                write_content_size=True,
-            ),
+            zstd_compression_level=compress_level,
         )
 
         # Compressed size should be smaller than original
         assert descriptor.size < len(test_content)
 
-        # Verify blob exists
-        blob_path = resource_dir / descriptor.digest.digest_hex
-        assert blob_path.exists()
-
-    def test_export_blob_with_auto_decompress(self, tmp_path):
-        """Test exporting zstd compressed blob with auto_decompress."""
-        resource_dir = tmp_path / "resources"
-        resource_dir.mkdir()
-        src_file = tmp_path / "test.txt"
-        test_content = b"test content " * 100
-        src_file.write_bytes(test_content)
-
-        descriptor = ZstdOCIDescriptor.add_file_to_resource_dir(src_file, resource_dir)
-
+        # Verify blob
         export_path = tmp_path / "exported.txt"
         descriptor.export_blob_from_resource_dir(
-            resource_dir, export_path, auto_decompress=True
+            resource_dir, export_path, auto_decompress=auto_decompress
         )
-
-        # Decompressed content should match original
-        assert export_path.read_bytes() == test_content
+        if auto_decompress:
+            # Decompressed content should match original
+            assert export_path.read_bytes() == test_content
+        else:
+            assert zstandard.decompress(export_path.read_bytes()) == test_content
