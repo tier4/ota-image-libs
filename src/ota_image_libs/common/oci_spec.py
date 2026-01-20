@@ -206,7 +206,6 @@ class OCIDescriptor(BaseModel):
         _media_type: str = cls.MediaType
         if not _media_type:
             raise ValueError(f"{cls.__name__} doesn't have `mediaType` defined")
-
         _src_file_size = src.stat().st_size
 
         _tmp_fpath = resource_dir / tmp_fname()
@@ -235,9 +234,6 @@ class OCIDescriptor(BaseModel):
             os.replace(_tmp_fpath, resource_dir / _digest)
         finally:
             _tmp_fpath.unlink(missing_ok=True)
-
-        if _write_bytes != _src_file_size:
-            logger.warning(f"{_write_bytes} != {_src_file_size}")
 
         if remove_origin:
             src.unlink(missing_ok=True)
