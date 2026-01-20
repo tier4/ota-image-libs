@@ -38,7 +38,7 @@ def oci_descriptor_before_validator(cls: Any, data: Any, info: ValidationInfo) -
     assert isinstance(data, dict)
     if info.mode == "json":
         # bypass descriptor protocol
-        # NOTE(20260119): we only respect the `SechemaVersion` and `MediaType`
+        # NOTE(20260119): we only respect the `SchemaVersion` and `MediaType`
         #   set for the current class, and must not looking throught to parent class.
         if _schema_ver_checker := cls.__dict__.get("SchemaVersion"):
             _schema_ver_checker.validate(data.get("schemaVersion"))
