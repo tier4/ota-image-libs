@@ -207,34 +207,43 @@ class OCIDescriptor(BaseModel):
         if not _media_type:
             raise ValueError(f"{cls.__name__} doesn't have `mediaType` defined")
 
+        _src_file_size = src.stat().st_size
+
         _tmp_fpath = resource_dir / tmp_fname()
-        _file_size = 0
+        _write_bytes = 0
         try:
             _hasher = cls.supported_digest_impl()
             with open(src, "rb") as _src, open(_tmp_fpath, "wb") as _dst:
                 if _media_type.endswith("+zstd"):
                     if isinstance(zstd_compression_level, int):
-                        cctx = zstandard.ZstdCompressor(level=zstd_compression_level)
+                        cctx = zstandard.ZstdCompressor(
+                            level=zstd_compression_level,
+                            write_checksum=True,
+                            write_content_size=True,
+                        )
                     else:
                         cctx = zstd_compression_level
 
-                    for _chunk in cctx.read_to_iter(_src):
+                    for _chunk in cctx.read_to_iter(_src, size=_src_file_size):
                         _hasher.update(_chunk)
-                        _file_size += _dst.write(_chunk)
+                        _write_bytes += _dst.write(_chunk)
                 else:
                     while data := _src.read(HASH_READ_SIZE):
                         _hasher.update(data)
-                        _file_size += _dst.write(data)
+                        _write_bytes += _dst.write(data)
             _digest = _hasher.hexdigest()
             os.replace(_tmp_fpath, resource_dir / _digest)
         finally:
             _tmp_fpath.unlink(missing_ok=True)
 
+        if _write_bytes != _src_file_size:
+            logger.warning(f"{_write_bytes} != {_src_file_size}")
+
         if remove_origin:
             src.unlink(missing_ok=True)
 
         return cls(
-            size=_file_size,
+            size=_write_bytes,
             digest=Sha256Digest(_digest),
             annotations=cls._validate_annotations(annotations) if annotations else None,
         )
