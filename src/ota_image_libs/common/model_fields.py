@@ -13,6 +13,8 @@
 # limitations under the License.
 """Common shared utils and libs for parsing and generating OTA images metadata."""
 
+from __future__ import annotations
+
 from typing import Any
 
 
@@ -35,18 +37,31 @@ class NotDefinedField:
             f"cannot set {self.field_name} on {obj} as this field is not defined"
         )
 
+    def validate(self, _input: Any):
+        pass  # for NotDefinedField, we don't need to do any validation
 
-class ConstFieldMeta(type):
-    """Meta class for ConstField."""
 
-    expected: Any
+class ConstFieldWithAltMeta(type):
+    """Meta class for ConstFieldWithAlt.
+
+    Multiple allowed values are permitted, but only the first value
+        is used as canonical value and returned by `__get__`.
+
+    If presented, alternative values are only for validation.
+    """
+
+    expected: tuple[Any, ...]
     field_name: str = ""
 
     def __set_name__(self, owner, name: str):
         self.field_name = name
 
     def __get__(self, obj, objtype=None):
-        return self.expected
+        return self.expected[0]
 
     def __set__(self, obj, value):
         raise ValueError(f"{self.__name__} reject override pre-defined const value")
+
+    def validate(self, _input: Any):
+        if _input not in self.expected:
+            raise ValueError(f"allow {self.expected}, but get {_input}")

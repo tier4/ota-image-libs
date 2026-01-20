@@ -26,15 +26,14 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     GetCoreSchemaHandler,
-    ValidationInfo,
     computed_field,
     model_validator,
 )
 from pydantic_core import CoreSchema, core_schema
 from typing_extensions import Self
 
-from ._common import tmp_fname
-from .model_fields import ConstFieldMeta, NotDefinedField
+from ._common import oci_descriptor_before_validator, tmp_fname
+from .model_fields import ConstFieldWithAltMeta, NotDefinedField
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +120,7 @@ class OCIDescriptor(BaseModel):
     """
 
     model_config = ConfigDict(
-        populate_by_name=True, ignored_types=(ConstFieldMeta, NotDefinedField)
+        populate_by_name=True, ignored_types=(ConstFieldWithAltMeta, NotDefinedField)
     )
 
     supported_digest_impl = staticmethod(sha256)
@@ -148,19 +147,8 @@ class OCIDescriptor(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _external_input_validator(cls, data: Any, info: ValidationInfo) -> Any:
-        """Validate external input, like parsing meta files."""
-        assert isinstance(data, dict)
-        if info.mode == "json":
-            if cls.ArtifactType and cls.ArtifactType != data.get("artifactType"):
-                raise ValueError(
-                    f"Expect artifactType {cls.ArtifactType}, get {data.get('artifactType')}"
-                )
-            if cls.MediaType != data.get("mediaType"):
-                raise ValueError(
-                    f"Expect mediaType {cls.MediaType}, get {data.get('mediaType')}"
-                )
-        return data
+    def _external_input_validator(cls, data, info) -> Any:
+        return oci_descriptor_before_validator(cls, data, info)
 
     @classmethod
     def _validate_annotations(cls, annotations: dict[str, Any]):

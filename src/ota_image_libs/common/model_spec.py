@@ -22,10 +22,10 @@ from weakref import WeakValueDictionary
 
 from pydantic import BaseModel, ConfigDict, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
-from typing_extensions import Self
+from typing_extensions import Self, TypeVarTuple, Unpack
 
-from ota_image_libs.common import ConstFieldMeta
-from ota_image_libs.common.msgpack_utils import pack_obj, unpack_dict
+from .model_fields import ConstFieldWithAltMeta
+from .msgpack_utils import pack_obj, unpack_dict
 
 StrOrPath = Union[str, Path]
 AnnotationsField = Dict[str, Union[str, int, float, bool]]
@@ -108,24 +108,30 @@ class MsgPackedDict(Dict[str, bytes], PydanticFromBytesSchema):
         return pack_obj(self)
 
 
-class _ConstField(Generic[T], metaclass=ConstFieldMeta):
-    """Base class for defining field should have expected value, used in metadata schema.
+Ts = TypeVarTuple("Ts")
 
-    It can be parameterized with a specific value.
-    When pydantic validating the input, this class will check if the input value
-        matches the expected pre-defined value.
+
+class _ConstField(Generic[Unpack[Ts]], metaclass=ConstFieldWithAltMeta):
+    """Base class for defining field should have expected value,
+        optionally with one or more aliases.
+
+    When pydantic validates the input, this class will check if the input value
+        matches at least one of the expected pre-defined value.
+    When pydantic serializes the corresponding model, only the canonical value
+        will be used.
     """
 
-    expected: T
+    expected: tuple[Unpack[Ts]]
 
-    def __class_getitem__(cls, value: int | str | Any):
+    def __class_getitem__(cls, value: tuple[Any, ...] | Any):
         """Return a class with the expected schema version."""
-        if isinstance(value, tuple):
-            raise TypeError(f"{cls.__name__} cannot be parameterized with single type.")
+        if not isinstance(value, tuple):
+            value = (value,)
 
         # might be TypeVar, return an instance of GenericAlias
-        if not isinstance(value, (int, str)):
-            return GenericAlias(cls, value)
+        for _v in value:
+            if not isinstance(_v, (int, str)):
+                return GenericAlias(cls, *value)
 
         _key = (cls.__name__, value)
         if _key in _parameterized_const_field:
@@ -141,6 +147,9 @@ class SchemaVersion(_ConstField[T]): ...
 
 
 class MediaType(_ConstField[T]): ...
+
+
+class MediaTypeWithAlt(_ConstField[Unpack[Ts]]): ...
 
 
 class ArtifactType(_ConstField[T]): ...

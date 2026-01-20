@@ -17,22 +17,34 @@
 import json
 
 from ota_image_libs.common.metafile_base import MetaFileBase, MetaFileDescriptor
-from ota_image_libs.common.model_spec import MediaType
-
+from ota_image_libs.common.model_spec import MediaType, MediaTypeWithAlt
 
 # Create concrete test classes
-class TestMetaFile(MetaFileBase):
+TEST_METAFILE_MEDIA_TYPE = "application/vnd.test.metafile.v1+json"
+
+
+class ForTestMetaFile(MetaFileBase):
     """Test MetaFile implementation."""
 
-    MediaType = MediaType["application/vnd.test.metafile.v1+json"]
-
+    MediaType = MediaType[TEST_METAFILE_MEDIA_TYPE]
     test_field: str
 
 
-class TestMetaFileDescriptor(MetaFileDescriptor[TestMetaFile]):
+INCORRECT_MEDIA_TYPE = "incorrect_media_type"
+
+
+class ForTestMetaFileWithAltMediaType(MetaFileBase):
+    MediaType = MediaTypeWithAlt[TEST_METAFILE_MEDIA_TYPE, INCORRECT_MEDIA_TYPE]
+    test_field: str
+
+
+TEST_MEDIAFILE_DESCRIPTOR_MEDIA_TYPE = "application/vnd.test.metafile.v1+json"
+
+
+class ForTestMetaFileDescriptor(MetaFileDescriptor[ForTestMetaFile]):
     """Test MetaFileDescriptor implementation."""
 
-    MediaType = MediaType["application/vnd.test.metafile.v1+json"]
+    MediaType = MediaType[TEST_MEDIAFILE_DESCRIPTOR_MEDIA_TYPE]
 
 
 class TestMetaFileDescriptorIntegration:
@@ -41,9 +53,9 @@ class TestMetaFileDescriptorIntegration:
         resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
-        metafile = TestMetaFile(test_field="test_value")
+        metafile = ForTestMetaFile(test_field="test_value")
 
-        descriptor = TestMetaFileDescriptor.export_metafile_to_resource_dir(
+        descriptor = ForTestMetaFileDescriptor.export_metafile_to_resource_dir(
             metafile, resource_dir
         )
 
@@ -64,32 +76,32 @@ class TestMetaFileDescriptorIntegration:
         resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
-        metafile = TestMetaFile(test_field="test_value")
-        descriptor = TestMetaFileDescriptor.export_metafile_to_resource_dir(
+        metafile = ForTestMetaFile(test_field="test_value")
+        descriptor = ForTestMetaFileDescriptor.export_metafile_to_resource_dir(
             metafile, resource_dir
         )
 
         # Load metafile
         retrieved = descriptor.load_metafile_from_resource_dir(resource_dir)
 
-        assert isinstance(retrieved, TestMetaFile)
+        assert isinstance(retrieved, ForTestMetaFile)
         assert retrieved.test_field == "test_value"
 
     def test_metafile_type_resolution(self):
         """Test that metafile_type correctly resolves the type."""
-        metafile_type = TestMetaFileDescriptor.metafile_type()
+        metafile_type = ForTestMetaFileDescriptor.metafile_type()
 
-        assert metafile_type == TestMetaFile
+        assert metafile_type == ForTestMetaFile
 
     def test_export_and_retrieve_roundtrip(self, tmp_path):
         """Test full roundtrip of export and retrieve."""
         resource_dir = tmp_path / "resources"
         resource_dir.mkdir()
 
-        original = TestMetaFile(test_field="roundtrip_test")
+        original = ForTestMetaFile(test_field="roundtrip_test")
 
         # Export
-        descriptor = TestMetaFileDescriptor.export_metafile_to_resource_dir(
+        descriptor = ForTestMetaFileDescriptor.export_metafile_to_resource_dir(
             original, resource_dir
         )
 
@@ -104,7 +116,7 @@ class TestMetaFileDescriptorIntegration:
 class TestMetaFileBase:
     def test_export_metafile_json(self):
         """Test exporting metafile as JSON."""
-        metafile = TestMetaFile(test_field="json_test")
+        metafile = ForTestMetaFile(test_field="json_test")
 
         exported = metafile.export_metafile()
 
@@ -122,13 +134,24 @@ class TestMetaFileBase:
             }
         )
 
-        metafile = TestMetaFile.parse_metafile(json_data)
+        metafile = ForTestMetaFile.parse_metafile(json_data)
 
         assert metafile.test_field == "parsed_value"
 
+    def test_parse_metafile_json_with_media_type_alt(self):
+        json_data = json.dumps(
+            {
+                "mediaType": INCORRECT_MEDIA_TYPE,
+                "test_field": "some_value",
+            }
+        )
+
+        metafile = ForTestMetaFileWithAltMediaType.parse_metafile(json_data)
+        assert metafile.test_field == "some_value"
+
     def test_metafile_has_media_type(self):
         """Test that metafile includes mediaType in export."""
-        metafile = TestMetaFile(test_field="test")
+        metafile = ForTestMetaFile(test_field="test")
 
         exported = metafile.export_metafile()
         parsed = json.loads(exported)
@@ -138,10 +161,13 @@ class TestMetaFileBase:
 
 
 # Test YAML support
+TEST_YAML_METAFILE_MEDIA_TYPE = "application/vnd.test.metafile.v1+yaml"
+
+
 class YamlTestMetaFile(MetaFileBase):
     """Test MetaFile with YAML media type."""
 
-    MediaType = MediaType["application/vnd.test.metafile.v1+yaml"]
+    MediaType = MediaType[TEST_YAML_METAFILE_MEDIA_TYPE]
 
     yaml_field: str
     number_field: int = 42
@@ -185,7 +211,7 @@ number_field: 200
 class TestMetaFileExportParseMethods:
     def test_export_metafile_json(self):
         """Test export_metafile method for JSON."""
-        metafile = TestMetaFile(test_field="export test")
+        metafile = ForTestMetaFile(test_field="export test")
 
         exported = metafile.export_metafile()
 
@@ -197,6 +223,6 @@ class TestMetaFileExportParseMethods:
         """Test parse_metafile method for JSON."""
         json_data = '{"mediaType": "application/vnd.test.metafile.v1+json", "test_field": "parsed"}'
 
-        metafile = TestMetaFile.parse_metafile(json_data)
+        metafile = ForTestMetaFile.parse_metafile(json_data)
 
         assert metafile.test_field == "parsed"
