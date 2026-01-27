@@ -32,14 +32,13 @@ def main():
 
     from ota_image_libs import version
     from ota_image_tools._utils import configure_logging
-    from ota_image_tools.cmds.lookup_image import lookup_image_cmd_args
-
-    from .cmds import (
+    from ota_image_tools.cmds import (
         inspect_blob_cmd_args,
         inspect_index_cmd_args,
         verify_resources_cmd_args,
         verify_sign_cmd_args,
     )
+    from ota_image_tools.cmds.lookup_image import lookup_image_cmd_args
 
     if TYPE_CHECKING:
         from argparse import ArgumentParser, _SubParsersAction

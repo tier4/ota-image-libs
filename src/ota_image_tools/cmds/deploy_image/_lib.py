@@ -211,6 +211,9 @@ class ResourcesDeployer:
                 count += 1
                 size += _size
 
+                if count % REPORT_BATCH == 0:
+                    logger.info(f"{count} resource files deployed ...")
+
                 if self._failed_flag.is_set():
                     logger.info("interrupt dispatching on failure")
                     break
@@ -220,6 +223,8 @@ class ResourcesDeployer:
                     self._prepare_one_resource_at_thread,
                     _digest,
                 ).add_done_callback(self._worker_cb)
+
+            logger.info(f"total {count} of resource files are deployed")
 
             # for worker finalizing
             for _ in range(self._workers_num):

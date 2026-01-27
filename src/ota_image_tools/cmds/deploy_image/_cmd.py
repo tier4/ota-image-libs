@@ -18,6 +18,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from pprint import pformat
 from typing import TYPE_CHECKING
 
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
@@ -151,6 +152,15 @@ def deploy_image_cmd(args: Namespace) -> None:
         logger.info(f"will use system image payload with {image_id=}.")
         workdir_setup = OTAImageDeployerSetup(image_id, artifact=image, workdir=workdir)
 
+        logger.info(
+            f"OTA image labels: {pformat(workdir_setup.image_index.annotations.model_dump())}"
+        )
+
+        image_config = workdir_setup.image_config
+        logger.info(
+            f"system image statistics:\n{pformat(image_config.labels.model_dump())}"
+        )
+
         logger.info("deploy resources for later setting rootfs ...")
         resource_deploy_tmp_dir = tmpdir / "resource_deploy_tmpdir"
         resource_deploy_tmp_dir.mkdir()
@@ -158,7 +168,7 @@ def deploy_image_cmd(args: Namespace) -> None:
             workdir_setup=workdir_setup,
             resource_dir=resource_dir,
             tmp_dir=resource_deploy_tmp_dir,
-            workers_num=args.workers_num,
+            workers_num=args.workers,
             concurrent_jobs=args.concurrent,
             read_size=args.read_size,
         )
@@ -169,7 +179,7 @@ def deploy_image_cmd(args: Namespace) -> None:
             file_table_db_helper=workdir_setup._ft_db_helper,
             rootfs_dir=rootfs_dir,
             resource_dir=resource_dir,
-            max_workers=args.workers_num,
+            max_workers=args.workers,
             concurrent_tasks=args.concurrent,
         )
         rootfs_deployer.setup_rootfs()
