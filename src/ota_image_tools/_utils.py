@@ -17,7 +17,7 @@ LOGGING_FORMAT = (
     "[%(asctime)s][%(levelname)s]-%(name)s:%(funcName)s:%(lineno)d,%(message)s"
 )
 
-logger = logging.getLogger()  # use root logger here
+logger = logging.getLogger("ota_image_tools")
 
 
 def configure_logging(log_level):

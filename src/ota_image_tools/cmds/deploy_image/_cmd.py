@@ -153,12 +153,20 @@ def deploy_image_cmd(args: Namespace) -> None:
         workdir_setup = OTAImageDeployerSetup(image_id, artifact=image, workdir=workdir)
 
         logger.info(
-            f"OTA image labels: {pformat(workdir_setup.image_index.annotations.model_dump())}"
+            "OTA image index labels: \n"
+            f"{pformat(workdir_setup.image_index.annotations.model_dump(exclude_none=True))}"
+        )
+
+        assert workdir_setup.image_manifest
+        logger.info(
+            f"OTA image manifest annotations for {image_id=}: \n"
+            f"{pformat(workdir_setup.image_manifest.annotations.model_dump(exclude_none=True))}"
         )
 
         image_config = workdir_setup.image_config
         logger.info(
-            f"system image statistics:\n{pformat(image_config.labels.model_dump())}"
+            "system image statistics: \n"
+            f"{pformat(image_config.labels.model_dump(exclude_none=True))}"
         )
 
         logger.info("deploy resources for later setting rootfs ...")
