@@ -44,6 +44,7 @@ IMAGE_MANIFEST_SAVE_FNAME = "image_manifest.json"
 IMAGE_CONFIG_SAVE_FNAME = "image_config.json"
 SYS_CONFIG_SAVE_FNAME = "sys_config.json"
 
+WORKERS_NUM = min(8, (os.cpu_count() or 1) + 4)
 CONCURRENT_JOBS = 1024
 REPORT_BATCH = 30_000
 READ_SIZE = 1 * 1024**2  # 1MiB
@@ -61,17 +62,11 @@ class OTAImageDeployerSetup:
     """Prepare the workdir for deploying the OTA image artifact."""
 
     def __init__(
-        self,
-        _image_id: ImageIdentifier,
-        *,
-        artifact: Path,
-        workdir: Path,
-        rootfsdir: Path,
+        self, _image_id: ImageIdentifier, *, artifact: Path, workdir: Path
     ) -> None:
         self._image_id = _image_id
         self.artifact = artifact
         self.workdir = workdir
-        self.rootfsdir = rootfsdir
 
         self._ft_db = workdir / FILE_TABLE_FNAME
         self._rst_db = workdir / RESOURCE_TABLE_FNAME
@@ -131,9 +126,9 @@ class ResourcesDeployer:
         resource_dir: Path,
         tmp_dir: Path,
         rst_db_conn: int = 3,
-        workers_num: int = min(8, (os.cpu_count() or 1) + 4),
-        concurrent_jobs: int = CONCURRENT_JOBS,
-        read_size: int = READ_SIZE,
+        workers_num: int,
+        concurrent_jobs: int,
+        read_size: int,
     ) -> None:
         self._read_size = read_size
         self._workers_num = workers_num
@@ -249,18 +244,18 @@ class RootfsDeployer:
         self,
         *,
         file_table_db_helper: FileTableDBHelper,
-        rootfs_dir: str,
+        rootfs_dir: Path,
         resource_dir: Path,
-        max_workers: int = 5,
-        concurrent_tasks: int = 1024,
+        max_workers: int,
+        concurrent_tasks: int,
     ) -> None:
         self._fst_db_helper = file_table_db_helper
 
         # for process_regular workers
         self._internal_que: Queue[int | None] = Queue()
 
-        self._rootfs_dir = Path(rootfs_dir)
-        self._resource_dir = Path(resource_dir)
+        self._rootfs_dir = rootfs_dir
+        self._resource_dir = resource_dir
 
         self.max_workers = max_workers
         self._se = threading.Semaphore(concurrent_tasks)
