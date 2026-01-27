@@ -30,10 +30,6 @@ from ota_image_libs.v1.image_config.sys_config import SysConfig
 from ota_image_libs.v1.image_index.schema import ImageIndex
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, ImageManifest
 
-IMAGE_MANIFEST_SAVE_FNAME = "image_manifest.json"
-IMAGE_CONFIG_SAVE_FNAME = "image_config.json"
-SYS_CONFIG_SAVE_FNAME = "sys_config.json"
-
 
 class OTAImageArtifactReader:
     """Helper class for reading the OTA image artifact file.
