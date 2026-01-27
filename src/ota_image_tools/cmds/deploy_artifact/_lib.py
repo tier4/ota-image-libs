@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -121,22 +122,26 @@ class OTAImageDeployerSetup:
 class ResourcesDeployer:
     """Deploy the OTA image resources to the `resource_dir`, for later `RootfsDeployer` use."""
 
-    RST_DB_CONN_NUM = 3
-
     def __init__(
         self,
         *,
         workdir_setup: OTAImageDeployerSetup,
         resource_dir: Path,
         tmp_dir: Path,
+        rst_db_conn: int = 3,
+        workers_num: int = min(8, (os.cpu_count() or 1) + 4),
+        concurrent_jobs: int = 1024,
     ) -> None:
         self._workdir_setup = workdir_setup
-        self._resource_dir = resource_dir
-        self._tmp_dir = tmp_dir
+        self._concurrent_se = threading.Semaphore(concurrent_jobs)
+        self._workers_num = workers_num
+        self._worker_finalize_barrier = threading.Barrier(workers_num)
+
+        self._failed_flag = threading.Event()
 
         # NOTE: this helper is capable for used in multi-thread environment
         self._rst_helper = PrepareResourceHelper(
-            workdir_setup._rst_db_helper.get_orm_pool(db_conn_num=self.RST_DB_CONN_NUM),
+            workdir_setup._rst_db_helper.get_orm_pool(db_conn_num=rst_db_conn),
             resource_dir=resource_dir,
             download_tmp_dir=tmp_dir,
         )
@@ -151,6 +156,7 @@ class ResourcesDeployer:
         _thread_local = self._thread_local
         artifact_reader: OTAImageArtifactReader = _thread_local.artifact_reader
         artifact_reader.close()
+        self._worker_finalize_barrier.wait()  # wait for all other workers finalized
 
     def _get_resource_zstd_decompress(self, _digest: bytes, _dst: Path) -> None:
         """Get a compressed resource from the artifact with decompressing it."""
@@ -171,11 +177,9 @@ class ResourcesDeployer:
 
     def _prepare_one_resource_at_thread(self, _digest: bytes):
         _, _gen = self._rst_helper.prepare_resource_at_thread(_digest)
-        for _resource_prepare_info in _gen:
-            _compression_alg = _resource_prepare_info.compression_alg
-            _digest = _resource_prepare_info.digest
-            _save_dst = _resource_prepare_info.save_dst
-            if _compression_alg:
+        for _dl_info in _gen:
+            _digest, _save_dst = _dl_info.digest, _dl_info.save_dst
+            if _compression_alg := _dl_info.compression_alg:
                 if _compression_alg != "zstd":
                     raise SetupRootfsFailed(
                         f"invalid OTA image, detect unknown compression alg: {_compression_alg}"
@@ -184,8 +188,51 @@ class ResourcesDeployer:
             else:
                 self._get_resource(_digest, _save_dst)
 
+    def _worker_cb(self, _fut: Future):
+        self._concurrent_se.release()
+        if _exc := _fut.exception():
+            self._failed_flag.set()
+            logger.error(
+                f"failure during deploying resources, abort soon: {_exc!r}",
+                exc_info=_exc,
+            )
+
     def deploy_resources(self):
-        pass
+        ft_helper = self._workdir_setup._ft_db_helper
+        with ThreadPoolExecutor(
+            max_workers=self._workers_num,
+            initializer=self._thread_initializer,
+            thread_name_prefix="ota_image_deployer",
+        ) as pool:
+            count, size = 0, 0
+            for _digest, _size in ft_helper.select_all_digests_with_size(
+                exclude_inlined=True
+            ):
+                count += 1
+                size += _size
+
+                if self._failed_flag.is_set():
+                    logger.info("interrupt dispatching on failure")
+                    break
+
+                self._concurrent_se.acquire()
+                pool.submit(
+                    self._prepare_one_resource_at_thread,
+                    _digest,
+                ).add_done_callback(self._worker_cb)
+
+            # for worker finalizing
+            for _ in range(self._workers_num):
+                pool.submit(self._thread_worker_finalizer)
+
+        if self._failed_flag.is_set():
+            _err_msg = "failure during processing, abort!"
+            logger.error(_err_msg)
+            exit_with_err_msg(_err_msg)
+        else:
+            logger.info(
+                f"resources deployment finished! total {count} resources ({size} bytes) are deployed"
+            )
 
 
 class RootfsDeployer:
