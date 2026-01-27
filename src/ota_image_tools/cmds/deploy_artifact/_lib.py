@@ -15,10 +15,13 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from queue import Queue
+
+import zstandard
 
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.file_table import FILE_TABLE_FNAME
@@ -33,6 +36,7 @@ from ota_image_libs.v1.file_table.utils import (
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier
 from ota_image_libs.v1.resource_table import RESOURCE_TABLE_FNAME
 from ota_image_libs.v1.resource_table.db import ResourceTableDBHelper
+from ota_image_libs.v1.resource_table.utils import PrepareResourceHelper
 from ota_image_tools._utils import exit_with_err_msg
 
 IMAGE_MANIFEST_SAVE_FNAME = "image_manifest.json"
@@ -44,7 +48,13 @@ REPORT_BATCH = 30_000
 logger = logging.getLogger(__name__)
 
 
-class WorkdirSetup:
+class SetupWorkDirFailed(Exception): ...
+
+
+class SetupRootfsFailed(Exception): ...
+
+
+class OTAImageDeployerSetup:
     """Prepare the workdir for deploying the OTA image artifact."""
 
     def __init__(
@@ -63,45 +73,126 @@ class WorkdirSetup:
         self._ft_db = workdir / FILE_TABLE_FNAME
         self._rst_db = workdir / RESOURCE_TABLE_FNAME
 
-        # Prepare workdir with all neccessary metadata files extracted from the OTA image artifact
-        with OTAImageArtifactReader(self.artifact) as artifact_reader:
-            self.image_index = _image_index = artifact_reader.parse_index()
+        try:
+            # Prepare workdir with all neccessary metadata files extracted from the OTA image artifact
+            with OTAImageArtifactReader(self.artifact) as artifact_reader:
+                self.image_index = _image_index = artifact_reader.parse_index()
 
-            rst_descriptor = _image_index.image_resource_table
-            if not rst_descriptor:
-                exit_with_err_msg("invalid OTA image: resource_table not found!")
-            with artifact_reader.open_blob(
-                rst_descriptor.digest.digest_hex
-            ) as _blob_fp:
-                rst_descriptor.export_blob_from_bytes_stream(
-                    _blob_fp, self._rst_db, auto_decompress=True
+                rst_descriptor = _image_index.image_resource_table
+                if not rst_descriptor:
+                    exit_with_err_msg("invalid OTA image: resource_table not found!")
+                with artifact_reader.open_blob(
+                    rst_descriptor.digest.digest_hex
+                ) as _blob_fp:
+                    rst_descriptor.export_blob_from_bytes_stream(
+                        _blob_fp, self._rst_db, auto_decompress=True
+                    )
+                    self._rst_db_helper = ResourceTableDBHelper(self._rst_db)
+
+                self.image_manifest = _image_manifest = (
+                    artifact_reader.select_image_payload(self._image_id, _image_index)
                 )
-                self._rst_db_helper = ResourceTableDBHelper(self._rst_db)
+                if not _image_manifest:
+                    exit_with_err_msg(
+                        f"image payload specified by {self._image_id} not found!"
+                    )
 
-            self.image_manifest = _image_manifest = (
-                artifact_reader.select_image_payload(self._image_id, _image_index)
-            )
-            if not _image_manifest:
-                exit_with_err_msg(
-                    f"image payload specified by {self._image_id} not found!"
+                self.image_config, self.sys_config = artifact_reader.get_image_config(
+                    _image_manifest
                 )
 
-            self.image_config, self.sys_config = artifact_reader.get_image_config(
-                _image_manifest
-            )
+                ft_descriptor = _image_manifest.image_file_table
+                with artifact_reader.open_blob(
+                    ft_descriptor.digest.digest_hex
+                ) as _blob_fp:
+                    ft_descriptor.export_blob_from_bytes_stream(
+                        _blob_fp, self._ft_db, auto_decompress=True
+                    )
+                    self._ft_db_helper = FileTableDBHelper(self._ft_db)
+        except Exception as e:
+            _err_msg = f"failed to setup workdir for OTA image deploy: {e!r}"
+            logger.exception(_err_msg)
+            raise SetupWorkDirFailed(_err_msg) from e
 
-            ft_descriptor = _image_manifest.image_file_table
-            with artifact_reader.open_blob(ft_descriptor.digest.digest_hex) as _blob_fp:
-                ft_descriptor.export_blob_from_bytes_stream(
-                    _blob_fp, self._ft_db, auto_decompress=True
-                )
-                self._ft_db_helper = FileTableDBHelper(self._ft_db)
+    def open_artifact(self) -> OTAImageArtifactReader:
+        return OTAImageArtifactReader(self.artifact)
 
 
-class SetupRootfsFailed(Exception): ...
+class ResourcesDeployer:
+    """Deploy the OTA image resources to the `resource_dir`, for later `RootfsDeployer` use."""
+
+    RST_DB_CONN_NUM = 3
+
+    def __init__(
+        self,
+        *,
+        workdir_setup: OTAImageDeployerSetup,
+        resource_dir: Path,
+        tmp_dir: Path,
+    ) -> None:
+        self._workdir_setup = workdir_setup
+        self._resource_dir = resource_dir
+        self._tmp_dir = tmp_dir
+
+        # NOTE: this helper is capable for used in multi-thread environment
+        self._rst_helper = PrepareResourceHelper(
+            workdir_setup._rst_db_helper.get_orm_pool(db_conn_num=self.RST_DB_CONN_NUM),
+            resource_dir=resource_dir,
+            download_tmp_dir=tmp_dir,
+        )
+        self._thread_local = threading.local()
+
+    def _thread_initializer(self) -> None:
+        _thread_local = self._thread_local
+        _thread_local.dctx = zstandard.ZstdDecompressor()
+        _thread_local.artifact_reader = self._workdir_setup.open_artifact()
+
+    def _thread_worker_finalizer(self) -> None:
+        _thread_local = self._thread_local
+        artifact_reader: OTAImageArtifactReader = _thread_local.artifact_reader
+        artifact_reader.close()
+
+    def _get_resource_zstd_decompress(self, _digest: bytes, _dst: Path) -> None:
+        """Get a compressed resource from the artifact with decompressing it."""
+        dctx: zstandard.ZstdDecompressor = self._thread_local.dctx
+        artifact_reader: OTAImageArtifactReader = self._thread_local.artifact_reader
+        with artifact_reader.open_blob(_digest.hex()) as _blob, open(
+            _dst, "wb"
+        ) as _dst_fp:
+            dctx.copy_stream(_blob, _dst_fp)
+
+    def _get_resource(self, _digest: bytes, _dst: Path) -> None:
+        """Get a resource from the artifact as it."""
+        artifact_reader: OTAImageArtifactReader = self._thread_local.artifact_reader
+        with artifact_reader.open_blob(_digest.hex()) as _blob, open(
+            _dst, "wb"
+        ) as _dst_fp:
+            shutil.copyfileobj(_blob, _dst_fp)
+
+    def _prepare_one_resource_at_thread(self, _digest: bytes):
+        _, _gen = self._rst_helper.prepare_resource_at_thread(_digest)
+        for _resource_prepare_info in _gen:
+            _compression_alg = _resource_prepare_info.compression_alg
+            _digest = _resource_prepare_info.digest
+            _save_dst = _resource_prepare_info.save_dst
+            if _compression_alg:
+                if _compression_alg != "zstd":
+                    raise SetupRootfsFailed(
+                        f"invalid OTA image, detect unknown compression alg: {_compression_alg}"
+                    )
+                self._get_resource_zstd_decompress(_digest, _save_dst)
+            else:
+                self._get_resource(_digest, _save_dst)
+
+    def deploy_resources(self):
+        pass
 
 
-class SetupRootfs:
+class RootfsDeployer:
+    """
+    Mostly copied from otaclient, a stripped version of `UpdateStandbySlot`.
+    """
+
     def __init__(
         self,
         *,
