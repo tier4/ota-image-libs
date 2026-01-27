@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier
-from ota_image_tools._utils import exit_with_err_msg
+from ota_image_tools._utils import exit_with_err_msg, measure_timecost
 
 from ._lib import (
     CONCURRENT_JOBS,
@@ -106,7 +106,7 @@ def deploy_image_cmd_args(
         "Adjust this value when the `deploy-image` cmd uses too much memory.",
         default=READ_SIZE,
     )
-    deploy_image_arg_parser.set_defaults(handler=deploy_image_cmd)
+    deploy_image_arg_parser.set_defaults(handler=measure_timecost(deploy_image_cmd))
 
 
 def deploy_image_cmd(args: Namespace) -> None:
