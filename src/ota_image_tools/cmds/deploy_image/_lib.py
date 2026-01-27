@@ -44,7 +44,9 @@ IMAGE_MANIFEST_SAVE_FNAME = "image_manifest.json"
 IMAGE_CONFIG_SAVE_FNAME = "image_config.json"
 SYS_CONFIG_SAVE_FNAME = "sys_config.json"
 
+CONCURRENT_JOBS = 1024
 REPORT_BATCH = 30_000
+READ_SIZE = 1 * 1024**2  # 1MiB
 
 logger = logging.getLogger(__name__)
 
@@ -130,11 +132,14 @@ class ResourcesDeployer:
         tmp_dir: Path,
         rst_db_conn: int = 3,
         workers_num: int = min(8, (os.cpu_count() or 1) + 4),
-        concurrent_jobs: int = 1024,
+        concurrent_jobs: int = CONCURRENT_JOBS,
+        read_size: int = READ_SIZE,
     ) -> None:
+        self._read_size = read_size
+        self._workers_num = workers_num
+
         self._workdir_setup = workdir_setup
         self._concurrent_se = threading.Semaphore(concurrent_jobs)
-        self._workers_num = workers_num
         self._worker_finalize_barrier = threading.Barrier(workers_num)
 
         self._failed_flag = threading.Event()
@@ -165,7 +170,7 @@ class ResourcesDeployer:
         with artifact_reader.open_blob(_digest.hex()) as _blob, open(
             _dst, "wb"
         ) as _dst_fp:
-            dctx.copy_stream(_blob, _dst_fp)
+            dctx.copy_stream(_blob, _dst_fp, read_size=self._read_size)
 
     def _get_resource(self, _digest: bytes, _dst: Path) -> None:
         """Get a resource from the artifact as it."""
@@ -173,7 +178,7 @@ class ResourcesDeployer:
         with artifact_reader.open_blob(_digest.hex()) as _blob, open(
             _dst, "wb"
         ) as _dst_fp:
-            shutil.copyfileobj(_blob, _dst_fp)
+            shutil.copyfileobj(_blob, _dst_fp, length=self._read_size)
 
     def _prepare_one_resource_at_thread(self, _digest: bytes):
         _, _gen = self._rst_helper.prepare_resource_at_thread(_digest)
