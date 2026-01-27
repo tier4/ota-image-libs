@@ -61,6 +61,10 @@ def inspect_index_cmd(args: Namespace) -> None:
 
     if image_root.is_file():
         with OTAImageArtifactReader(image_root) as artifact_reader:
-            return print(artifact_reader.parse_index().model_dump_json(indent=2))
+            return print(
+                artifact_reader.parse_index().model_dump_json(
+                    indent=2, exclude_none=True
+                )
+            )
 
     exit_with_err_msg(f"{image_root} is not a folder nor an OTA image artifact!")
