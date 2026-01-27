@@ -62,6 +62,18 @@ class OTAImageArtifactReader:
             self.close()
         return False
 
+    def is_valid_image(self) -> bool:
+        """Check if this ZIP archive is an OTA image.
+
+        NOTE that this method works by only checking the present of
+            `index.json` file!
+        """
+        try:
+            self._f.getinfo(IMAGE_INDEX_FNAME)
+            return True
+        except Exception:
+            return False
+
     def parse_index(self) -> ImageIndex:
         with self._f.open(IMAGE_INDEX_FNAME) as _f:
             return ImageIndex.parse_metafile(_f.read().decode("utf-8"))
