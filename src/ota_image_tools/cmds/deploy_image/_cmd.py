@@ -47,7 +47,7 @@ def deploy_image_cmd_args(
         name="deploy-image",
         help=(
             _help_txt
-            := "Deploy an system image payload in the OTA image artifact to a folder."
+            := "Deploy an system image payload from the input OTA image artifact to a folder."
         ),
         description=_help_txt,
         parents=parent_parser,
@@ -101,7 +101,8 @@ def deploy_image_cmd_args(
     deploy_image_arg_parser.add_argument(
         "--read-size",
         type=int,
-        help="The maximum read length when reading from the image artifact.",
+        help="The maximum read buffer size for every `read` to the image artifact. "
+        "Adjust this value when the `deploy-image` cmd uses too much memory.",
         default=READ_SIZE,
     )
     deploy_image_arg_parser.set_defaults(handler=deploy_image_cmd)

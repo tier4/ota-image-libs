@@ -12,3 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Deploy an rootfs from OTA image artifact to specific location."""
+
+from ._cmd import deploy_image_cmd_args
+
+__all__ = ["deploy_image_cmd_args"]

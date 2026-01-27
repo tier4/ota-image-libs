@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from ota_image_tools.cmds.deploy_image._cmd import deploy_image_cmd_args
+
 # freeze_support MUST be called before as early as possible
 if __name__ == "__main__":
     from multiprocessing import freeze_support
@@ -80,6 +82,7 @@ def main():
         handler=lambda _: print(f"Build with ota-image-libs v{version}.")
     )
 
+    deploy_image_cmd_args(sub_arg_parser)
     inspect_blob_cmd_args(sub_arg_parser)
     inspect_index_cmd_args(sub_arg_parser)
     lookup_image_cmd_args(sub_arg_parser)
