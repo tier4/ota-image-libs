@@ -24,8 +24,7 @@ from typing import TYPE_CHECKING
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier
 from ota_image_tools._utils import exit_with_err_msg, measure_timecost
-
-from ._lib import (
+from ota_image_tools.libs.deploy_image import (
     CONCURRENT_JOBS,
     READ_SIZE,
     WORKERS_NUM,
