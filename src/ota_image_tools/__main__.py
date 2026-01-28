@@ -14,31 +14,37 @@
 
 from __future__ import annotations
 
-import argparse
-import functools
-import logging
-from collections.abc import Callable
-from typing import TYPE_CHECKING
+from ota_image_tools.cmds.deploy_image._cmd import deploy_image_cmd_args
 
-from ota_image_libs import version
-from ota_image_tools._utils import configure_logging
-from ota_image_tools.cmds.lookup_image import lookup_image_cmd_args
+# freeze_support MUST be called before as early as possible
+if __name__ == "__main__":
+    from multiprocessing import freeze_support
 
-from .cmds import (
-    inspect_blob_cmd_args,
-    inspect_index_cmd_args,
-    verify_resources_cmd_args,
-    verify_sign_cmd_args,
-)
-
-if TYPE_CHECKING:
-    from argparse import ArgumentParser, _SubParsersAction
-
-
-logger = logging.getLogger(__name__)
+    freeze_support()
 
 
 def main():
+    import argparse
+    import functools
+    import logging
+    from collections.abc import Callable
+    from typing import TYPE_CHECKING
+
+    from ota_image_libs import version
+    from ota_image_tools._utils import configure_logging
+    from ota_image_tools.cmds import (
+        inspect_blob_cmd_args,
+        inspect_index_cmd_args,
+        verify_resources_cmd_args,
+        verify_sign_cmd_args,
+    )
+    from ota_image_tools.cmds.lookup_image import lookup_image_cmd_args
+
+    if TYPE_CHECKING:
+        from argparse import ArgumentParser, _SubParsersAction
+
+    logger = logging.getLogger(__name__)
+
     arg_parser = argparse.ArgumentParser(
         description="OTA Image Tools for OTA Image version 1",
     )
@@ -75,6 +81,7 @@ def main():
         handler=lambda _: print(f"Build with ota-image-libs v{version}.")
     )
 
+    deploy_image_cmd_args(sub_arg_parser)
     inspect_blob_cmd_args(sub_arg_parser)
     inspect_index_cmd_args(sub_arg_parser)
     lookup_image_cmd_args(sub_arg_parser)
