@@ -30,6 +30,8 @@ from ota_image_libs.v1.image_config.sys_config import SysConfig
 from ota_image_libs.v1.image_index.schema import ImageIndex
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, ImageManifest
 
+DEFAULT_READ_SIZE = 8 * 1024**2
+
 
 class OTAImageArtifactReader:
     """Helper class for reading the OTA image artifact file.
@@ -42,7 +44,7 @@ class OTAImageArtifactReader:
         self,
         _f: ZipFile | PathLike,
         *,
-        read_chunk_size: int = 8 * 1024**2,
+        read_chunk_size: int = DEFAULT_READ_SIZE,
         close_on_exit: bool = True,
     ) -> None:
         if isinstance(_f, ZipFile):
@@ -61,6 +63,9 @@ class OTAImageArtifactReader:
         if self._close_on_exit:
             self.close()
         return False
+
+    def close(self) -> None:
+        self._f.close()
 
     def is_valid_image(self) -> bool:
         """Check if this ZIP archive is an OTA image.
@@ -82,11 +87,8 @@ class OTAImageArtifactReader:
         try:
             with self._f.open(INDEX_JWT_FNAME) as _f:
                 return _f.read().decode("utf-8")
-        except FileNotFoundError:
+        except KeyError:
             return  # this image is not signed
-
-    def close(self) -> None:
-        self._f.close()
 
     def open_blob(self, sha256_digest: str) -> IO[bytes]:
         """Open a blob in the blob storage of the archive."""
@@ -104,9 +106,12 @@ class OTAImageArtifactReader:
     def read_blob_as_text(self, sha256_digest: str) -> str:
         return self.read_blob(sha256_digest).decode("utf-8")
 
-    def stream_blob(self, sha256_digest: str) -> Generator[bytes]:
+    def stream_blob(
+        self, sha256_digest: str, *, read_size: int | None = None
+    ) -> Generator[bytes]:
+        read_size = self._chunk_size if read_size is None else read_size
         with self.open_blob(sha256_digest) as _blob_reader:
-            while _chunk := _blob_reader.read(self._chunk_size):
+            while _chunk := _blob_reader.read(read_size):
                 yield _chunk
 
     def select_image_payload(

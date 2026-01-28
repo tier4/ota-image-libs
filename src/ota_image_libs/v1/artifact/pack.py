@@ -36,9 +36,7 @@ from ota_image_libs.v1.consts import IMAGE_INDEX_FNAME, INDEX_JWT_FNAME
 if sys.version_info >= (3, 11):
 
     def add_dir(zipf: ZipFile, filename: Path, arcname: Path | str) -> None:
-        """
-        Add a directory to the OTA image zipfile. The src must be a directory.
-        """
+        """Add a directory to the OTA image zipfile. The src must be a directory."""
         _zipinfo = ZipInfo.from_file(
             filename=f"{str(filename).rstrip('/')}/",
             arcname=f"{str(arcname).rstrip('/')}/",
@@ -50,8 +48,7 @@ if sys.version_info >= (3, 11):
     def add_file(
         zipf: ZipFile, filename: Path, arcname: Path | str, *, rw_chunk_size: int
     ) -> None:
-        """
-        Add a regular file to the OTA image zipfile. The src must be a regular file.
+        """Add a regular file to the OTA image zipfile. The src must be a regular file.
 
         Basically a copy of the ZipFile.writestr method.
         """
