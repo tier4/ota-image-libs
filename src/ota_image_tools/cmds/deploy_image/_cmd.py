@@ -117,7 +117,7 @@ def deploy_image_cmd(args: Namespace) -> None:
 
     rootfs_dir = Path(args.rootfs_dir)
     if rootfs_dir.is_dir():
-        exit_with_err_msg(f"{rootfs_dir} already exits!")
+        exit_with_err_msg(f"{rootfs_dir} already exists!")
     rootfs_dir.mkdir(mode=0o750)
     # NOTE: aligns with otaclient's convention
     resource_dir = rootfs_dir / ".ota-resources"
@@ -134,7 +134,7 @@ def deploy_image_cmd(args: Namespace) -> None:
         )
     else:
         tmp_dir_base = os.getcwd()
-        logger.info(f"will Create tmp workdir under current workdir: {tmp_dir_base}")
+        logger.info(f"will create tmp workdir under current workdir: {tmp_dir_base}")
 
     with tempfile.TemporaryDirectory(
         prefix=".ota_image_deployer",

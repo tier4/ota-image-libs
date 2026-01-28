@@ -72,7 +72,7 @@ class OTAImageDeployerSetup:
         self._rst_db = workdir / RESOURCE_TABLE_FNAME
 
         try:
-            # Prepare workdir with all neccessary metadata files extracted from the OTA image artifact
+            # Prepare workdir with all necessary metadata files extracted from the OTA image artifact
             with OTAImageArtifactReader(self.artifact) as artifact_reader:
                 self.image_index = _image_index = artifact_reader.parse_index()
 
