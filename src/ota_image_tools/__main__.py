@@ -14,8 +14,6 @@
 
 from __future__ import annotations
 
-from ota_image_tools.cmds.deploy_image._cmd import deploy_image_cmd_args
-
 # freeze_support MUST be called before as early as possible
 if __name__ == "__main__":
     from multiprocessing import freeze_support
@@ -27,23 +25,32 @@ def main():
     import argparse
     import functools
     import logging
+    import signal
+    import sys
     from collections.abc import Callable
     from typing import TYPE_CHECKING
 
     from ota_image_libs import version
     from ota_image_tools._utils import configure_logging
     from ota_image_tools.cmds import (
+        deploy_image_cmd_args,
         inspect_blob_cmd_args,
         inspect_index_cmd_args,
+        lookup_image_cmd_args,
         verify_resources_cmd_args,
         verify_sign_cmd_args,
     )
-    from ota_image_tools.cmds.lookup_image import lookup_image_cmd_args
 
     if TYPE_CHECKING:
         from argparse import ArgumentParser, _SubParsersAction
 
     logger = logging.getLogger(__name__)
+
+    def signal_handler(signal_value, _) -> None:
+        print(f"receive {signal_value=}, exit ...")
+        sys.exit(1)
+
+    signal.signal(signal.SIGINT, signal_handler)
 
     arg_parser = argparse.ArgumentParser(
         description="OTA Image Tools for OTA Image version 1",
