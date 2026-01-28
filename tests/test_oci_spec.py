@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import io
 import itertools
 from typing import ClassVar
 
@@ -319,3 +320,103 @@ class TestOCIDescriptorZstd:
             assert export_path.read_bytes() == test_content
         else:
             assert zstandard.decompress(export_path.read_bytes()) == test_content
+
+    def test_export_blob_from_bytes_stream_uncompressed(self, tmp_path):
+        """Test export_blob_from_bytes_stream with uncompressed content."""
+        resource_dir = tmp_path / "resources"
+        resource_dir.mkdir()
+
+        test_content = b"test content for bytes stream"
+        descriptor = ConcreteOCIDescriptor.add_contents_to_resource_dir(
+            test_content, resource_dir
+        )
+
+        # Create a BytesIO stream
+        stream = io.BytesIO(test_content)
+        save_dst = tmp_path / "exported_from_stream.txt"
+
+        result = descriptor.export_blob_from_bytes_stream(
+            stream, save_dst, auto_decompress=False
+        )
+
+        assert result == save_dst
+        assert save_dst.exists()
+        assert save_dst.read_bytes() == test_content
+
+    def test_export_blob_from_bytes_stream_uncompressed_with_auto_decompress(
+        self, tmp_path
+    ):
+        """Test export_blob_from_bytes_stream with auto_decompress on uncompressed content."""
+        resource_dir = tmp_path / "resources"
+        resource_dir.mkdir()
+
+        test_content = b"test content for bytes stream"
+        descriptor = ConcreteOCIDescriptor.add_contents_to_resource_dir(
+            test_content, resource_dir
+        )
+
+        # Create a BytesIO stream
+        stream = io.BytesIO(test_content)
+        save_dst = tmp_path / "exported_from_stream.txt"
+
+        # auto_decompress should be ignored for non-zstd content
+        result = descriptor.export_blob_from_bytes_stream(
+            stream, save_dst, auto_decompress=True
+        )
+
+        assert result == save_dst
+        assert save_dst.exists()
+        assert save_dst.read_bytes() == test_content
+
+    def test_export_blob_from_bytes_stream_compressed_no_decompress(self, tmp_path):
+        """Test export_blob_from_bytes_stream with compressed content, no auto_decompress."""
+        test_content = b"test content " * 100  # Repeatable content compresses well
+        compressed_content = zstandard.compress(test_content)
+
+        # Create a BytesIO stream
+        stream = io.BytesIO(compressed_content)
+        save_dst = tmp_path / "exported_compressed.txt"
+
+        descriptor = ZstdOCIDescriptor(
+            size=len(compressed_content),
+            digest=Sha256Digest(
+                ZstdOCIDescriptor.supported_digest_impl(compressed_content).hexdigest()
+            ),
+        )
+
+        result = descriptor.export_blob_from_bytes_stream(
+            stream, save_dst, auto_decompress=False
+        )
+
+        assert result == save_dst
+        assert save_dst.exists()
+        # Should remain compressed
+        assert save_dst.read_bytes() == compressed_content
+
+    def test_export_blob_from_bytes_stream_compressed_with_auto_decompress(
+        self, tmp_path
+    ):
+        """Test export_blob_from_bytes_stream with compressed content and auto_decompress."""
+        test_content = b"test content " * 100  # Repeatable content compresses well
+        compressed_content = zstandard.compress(test_content)
+
+        # Create a BytesIO stream
+        stream = io.BytesIO(compressed_content)
+        save_dst = tmp_path / "exported_decompressed.txt"
+
+        descriptor = ZstdOCIDescriptor(
+            size=len(compressed_content),
+            digest=Sha256Digest(
+                ZstdOCIDescriptor.supported_digest_impl(compressed_content).hexdigest()
+            ),
+        )
+
+        result = descriptor.export_blob_from_bytes_stream(
+            stream, save_dst, auto_decompress=True
+        )
+
+        assert result == save_dst
+        assert save_dst.exists()
+        # Should be decompressed
+        assert save_dst.read_bytes() == test_content
+        assert save_dst.read_bytes() != compressed_content
