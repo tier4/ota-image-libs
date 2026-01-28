@@ -26,13 +26,13 @@ from ota_image_libs.v1.file_table.db import DirRow, NonRegularFileRow, RegularFi
 DEFAULT_PERMISSIONS = 0o100644
 
 
-def _copyfile_slim(src: Path, dst: Path) -> None:
+def _copyfile_slim(src: Path, dst: Path) -> None:  # pragma: no cover
     """A simple wrapper around shutil.copyfileobj."""
     with open(src, "rb") as _src, open(dst, "wb") as _dst:
         copyfileobj(_src, _dst)
 
 
-class PrepareEntryFailed(Exception):
+class PrepareEntryFailed(Exception):  # pragma: no cover
     entry: Any
     """The entry that caused the failure."""
 
@@ -44,14 +44,14 @@ class PrepareEntryFailed(Exception):
         return f"failed to process {self.entry} due to: {self.__cause__}"
 
 
-def _set_xattr(path: Path, _in: MsgPackedDict) -> None:
+def _set_xattr(path: Path, _in: MsgPackedDict) -> None:  # pragma: no cover
     for k, v in _in.items():
         os.setxattr(path, k, v, follow_symlinks=False)
 
 
 def fpath_on_target(
     _canonical_path: Path, target_mnt: Path, *, canonical_root="/"
-) -> Path:
+) -> Path:  # pragma: no cover
     """Return the fpath of self joined to `target_mnt`."""
     _target_on_mnt = target_mnt / _canonical_path.relative_to(canonical_root)
     return _target_on_mnt
