@@ -19,7 +19,7 @@ import os
 import shutil
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Union
+from typing import IO, Any, Union
 
 import zstandard
 from pydantic import (
@@ -281,14 +281,21 @@ class OCIDescriptor(BaseModel):
             The fpath to the save location.
         """
         _blob_path = self.get_blob_from_resource_dir(resource_dir)
-        if auto_decompress:
-            if self.mediaType.endswith("+zstd"):
-                dctx = zstandard.ZstdDecompressor()
-                with open(_blob_path, "rb") as _src, open(save_dst, "wb") as _dst:
-                    dctx.copy_stream(_src, _dst)
-                return save_dst
-            # silently do normal copy if the blob is not compressed.
-        shutil.copyfile(_blob_path, save_dst)
+        with open(_blob_path, "rb") as _src:
+            return self.export_blob_from_bytes_stream(
+                _src, save_dst, auto_decompress=auto_decompress
+            )
+
+    def export_blob_from_bytes_stream(
+        self, _fstream: IO[bytes], save_dst: Path, *, auto_decompress: bool
+    ) -> Path:
+        # silently do normal copy if the blob is not compressed
+        #   or auto_decompress not requested.
+        with open(save_dst, "wb") as _dst:
+            if auto_decompress and self.mediaType.endswith("+zstd"):
+                zstandard.ZstdDecompressor().copy_stream(_fstream, _dst)
+            else:
+                shutil.copyfileobj(_fstream, _dst)
         return save_dst
 
     def remove_blob_from_resource_dir(self, resource_dir: Path) -> Self:
