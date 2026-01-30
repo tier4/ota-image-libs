@@ -43,13 +43,13 @@ logger = logging.getLogger(__name__)
 def deploy_image_cmd_args(
     sub_arg_parser: _SubParsersAction[ArgumentParser], *parent_parser: ArgumentParser
 ) -> None:  # pragma: no cover
+    _help_text = (
+        "Deploy an system image payload from the input OTA image artifact to a folder."
+    )
     deploy_image_arg_parser = sub_arg_parser.add_parser(
         name="deploy-image",
-        help=(
-            _help_txt
-            := "Deploy an system image payload from the input OTA image artifact to a folder."
-        ),
-        description=_help_txt,
+        help=_help_text,
+        description=_help_text,
         parents=parent_parser,
     )
     deploy_image_arg_parser.add_argument(
