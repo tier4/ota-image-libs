@@ -15,13 +15,13 @@
 from __future__ import annotations
 
 # freeze_support MUST be called before as early as possible
-if __name__ == "__main__":
+if __name__ == "__main__": # pragma: no cover
     from multiprocessing import freeze_support
 
     freeze_support()
 
 
-def main():
+def main(): # pragma: no cover
     import argparse
     import functools
     import logging
