@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 def deploy_image_cmd_args(
     sub_arg_parser: _SubParsersAction[ArgumentParser], *parent_parser: ArgumentParser
-) -> None:
+) -> None: # pragma: no cover
     deploy_image_arg_parser = sub_arg_parser.add_parser(
         name="deploy-image",
         help=(
@@ -108,7 +108,7 @@ def deploy_image_cmd_args(
     deploy_image_arg_parser.set_defaults(handler=measure_timecost(deploy_image_cmd))
 
 
-def deploy_image_cmd(args: Namespace) -> None:
+def deploy_image_cmd(args: Namespace) -> None: # pragma: no cover
     logger.debug(f"calling {deploy_image_cmd.__name__} with {args}")
     image = Path(args.image)
     if not image.is_file():
