@@ -265,7 +265,7 @@ class RootfsDeployer:
 
         self.max_workers = max_workers
         self._se = threading.Semaphore(concurrent_tasks)
-        self._interrupted = threading.Event()
+        self._last_exc = None
 
         self._hardlink_group_lock = threading.Lock()
         self._hardlink_group: dict[int, Path] = {}
@@ -282,9 +282,8 @@ class RootfsDeployer:
     def _task_done_cb(self, _fut: Future):
         self._se.release()  # release se first
         if _exc := _fut.exception():
-            logger.error(f"failure during processing: {_exc}", exc_info=_exc)
             self._internal_que.put_nowait(None)  # signal the status reporter
-            self._interrupted.set()
+            self._last_exc = _exc
 
     def _process_hardlinked_file_at_thread(
         self, _digest_hex: str, _entry: RegularFileRow, first_to_prepare: bool
@@ -364,7 +363,7 @@ class RootfsDeployer:
                 max_workers=self.max_workers, thread_name_prefix="ota_update_slot"
             ) as pool:
                 for _entry in self._fst_db_helper.iter_regular_entries():
-                    if self._interrupted.is_set():
+                    if self._last_exc:
                         logger.error("detect worker failed, abort!")
                         return
                     self._se.acquire()
@@ -403,7 +402,6 @@ class RootfsDeployer:
             try:
                 prepare_dir(entry, target_mnt=self._rootfs_dir)
             except Exception as e:
-                logger.exception(f"failed to process {dict(entry)=}: {e!r}")
                 raise SetupRootfsFailed(f"failed to process {entry=}: {e!r}") from e
 
     def _process_non_regular_files(self) -> None:
@@ -412,7 +410,6 @@ class RootfsDeployer:
             try:
                 prepare_non_regular(entry, target_mnt=self._rootfs_dir)
             except Exception as e:
-                logger.exception(f"failed to process {dict(entry)=}: {e!r}")
                 raise SetupRootfsFailed(f"failed to process {entry=}: {e!r}") from e
 
     # API
@@ -427,5 +424,7 @@ class RootfsDeployer:
         self._process_non_regular_files()
         self._process_regular_file_entries()
 
-        if self._interrupted.is_set():
-            raise SetupRootfsFailed("failure during regular files processing!")
+        if _exc := self._last_exc:
+            raise SetupRootfsFailed(
+                f"failure during regular files processing: {_exc!r}"
+            )
