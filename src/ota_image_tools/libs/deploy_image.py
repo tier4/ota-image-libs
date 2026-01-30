@@ -112,9 +112,9 @@ class OTAImageDeployerSetup:
                     )
                     self._ft_db_helper = FileTableDBHelper(self._ft_db)
         except Exception as e:
-            _err_msg = f"failed to setup workdir for OTA image deploy: {e!r}"
-            logger.exception(_err_msg)
-            raise SetupWorkDirFailed(_err_msg) from e
+            raise SetupWorkDirFailed(
+                f"failed to setup workdir for OTA image deploy: {e!r}"
+            ) from e
 
     def open_artifact(self) -> OTAImageArtifactReader:
         return OTAImageArtifactReader(self.artifact)

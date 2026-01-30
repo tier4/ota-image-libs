@@ -136,11 +136,12 @@ def test_worker_cb_sets_failed_flag_on_exception(
     )
 
     fut = mocker.MagicMock(spec=Future)
-    fut.exception.return_value = ValueError("injected test failure")
+    exc = ValueError("injected test failure")
+    fut.exception.return_value = exc
 
     deployer._concurrent_se.acquire()
     deployer._worker_cb(fut)
-    assert deployer._failed_flag.is_set()
+    assert deployer._last_exc is exc
 
 
 def test_deploy_image_e2e(
