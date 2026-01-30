@@ -11,19 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Deploy an rootfs from OTA image artifact to specific location."""
 
-from .deploy_image import deploy_image_cmd_args
-from .inspect_blob import inspect_blob_cmd_args
-from .inspect_index import inspect_index_cmd_args
-from .lookup_image import lookup_image_cmd_args
-from .verify_resources import verify_resources_cmd_args
-from .verify_sign import verify_sign_cmd_args
+from ._cmd import deploy_image_cmd_args
 
-__all__ = [
-    "deploy_image_cmd_args",
-    "inspect_blob_cmd_args",
-    "inspect_index_cmd_args",
-    "lookup_image_cmd_args",
-    "verify_sign_cmd_args",
-    "verify_resources_cmd_args",
-]
+__all__ = ["deploy_image_cmd_args"]
