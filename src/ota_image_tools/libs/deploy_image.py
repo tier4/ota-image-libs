@@ -56,6 +56,9 @@ logger = logging.getLogger(__name__)
 class SetupWorkDirFailed(Exception): ...
 
 
+class DeployResourcesFailed(Exception): ...
+
+
 class SetupRootfsFailed(Exception): ...
 
 
@@ -138,7 +141,7 @@ class ResourcesDeployer:
         self._concurrent_se = threading.Semaphore(concurrent_jobs)
         self._worker_finalize_barrier = threading.Barrier(workers_num)
 
-        self._failed_flag = threading.Event()
+        self._last_exc = None
 
         # NOTE: this helper is capable for used in multi-thread environment
         self._rst_helper = PrepareResourceHelper(
@@ -192,11 +195,7 @@ class ResourcesDeployer:
     def _worker_cb(self, _fut: Future):
         self._concurrent_se.release()
         if _exc := _fut.exception():
-            self._failed_flag.set()
-            logger.error(
-                f"failure during deploying resources, abort soon: {_exc!r}",
-                exc_info=_exc,
-            )
+            self._last_exc = _exc
 
     def deploy_resources(self):
         ft_helper = self._workdir_setup._ft_db_helper
@@ -215,8 +214,7 @@ class ResourcesDeployer:
                 if count % REPORT_BATCH == 0:
                     logger.info(f"{count} resource files deployed ...")
 
-                if self._failed_flag.is_set():
-                    logger.info("interrupt dispatching on failure")
+                if _exc := self._last_exc:
                     break
 
                 self._concurrent_se.acquire()
@@ -224,21 +222,18 @@ class ResourcesDeployer:
                     self._prepare_one_resource_at_thread,
                     _digest,
                 ).add_done_callback(self._worker_cb)
-
-            logger.info(f"total {count} of resource files are deployed")
+            else:
+                logger.info(f"total {count} of resource files are deployed")
 
             # for worker finalizing
             for _ in range(self._workers_num):
                 pool.submit(self._thread_worker_finalizer)
 
-        if self._failed_flag.is_set():
-            _err_msg = "failure during processing, abort!"
-            logger.error(_err_msg)
-            exit_with_err_msg(_err_msg)
-        else:
-            logger.info(
-                f"resources deployment finished! total {count} resources ({size} bytes) are deployed"
-            )
+        if _exc := self._last_exc:
+            raise DeployResourcesFailed(f"failure during processing: {_exc}") from _exc
+        logger.info(
+            f"resources deployment finished! total {count} resources ({size} bytes) are deployed"
+        )
 
 
 class RootfsDeployer:
