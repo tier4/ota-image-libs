@@ -15,13 +15,11 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import shutil
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from queue import Queue
 
 import zstandard
 
@@ -47,10 +45,7 @@ SYS_CONFIG_SAVE_FNAME = "sys_config.json"
 
 WORKERS_NUM = min(8, (os.cpu_count() or 1) + 4)
 CONCURRENT_JOBS = 1024
-REPORT_BATCH = 30_000
 READ_SIZE = 1 * 1024**2  # 1MiB
-
-logger = logging.getLogger(__name__)
 
 
 class SetupWorkDirFailed(Exception): ...
@@ -197,7 +192,7 @@ class ResourcesDeployer:
         if _exc := _fut.exception():
             self._last_exc = _exc
 
-    def deploy_resources(self):
+    def deploy_resources(self) -> tuple[int, int]:
         ft_helper = self._workdir_setup._ft_db_helper
         with ThreadPoolExecutor(
             max_workers=self._workers_num,
@@ -211,9 +206,6 @@ class ResourcesDeployer:
                 count += 1
                 size += _size
 
-                if count % REPORT_BATCH == 0:
-                    logger.info(f"{count} resource files deployed ...")
-
                 if _exc := self._last_exc:
                     break
 
@@ -222,8 +214,6 @@ class ResourcesDeployer:
                     self._prepare_one_resource_at_thread,
                     _digest,
                 ).add_done_callback(self._worker_cb)
-            else:
-                logger.info(f"total {count} of resource files are deployed")
 
             # for worker finalizing
             for _ in range(self._workers_num):
@@ -231,9 +221,7 @@ class ResourcesDeployer:
 
         if _exc := self._last_exc:
             raise DeployResourcesFailed(f"failure during processing: {_exc}") from _exc
-        logger.info(
-            f"resources deployment finished! total {count} resources ({size} bytes) are deployed"
-        )
+        return count, size
 
 
 class RootfsDeployer:
@@ -252,9 +240,6 @@ class RootfsDeployer:
     ) -> None:
         self._fst_db_helper = file_table_db_helper
 
-        # for process_regular workers
-        self._internal_que: Queue[int | None] = Queue()
-
         self._rootfs_dir = rootfs_dir
         self._resource_dir = resource_dir
 
@@ -265,19 +250,9 @@ class RootfsDeployer:
         self._hardlink_group_lock = threading.Lock()
         self._hardlink_group: dict[int, Path] = {}
 
-    def _report_uploader_thread(self) -> None:
-        """Report uploader worker thread entry."""
-        count, size = 0, 0
-        while (_processed_size := self._internal_que.get()) is not None:
-            count += 1
-            size += _processed_size
-            if count > 0 and count % REPORT_BATCH == 0:
-                logger.info(f"{count} files processed ({size} bytes)")
-
     def _task_done_cb(self, _fut: Future):
         self._se.release()  # release se first
         if _exc := _fut.exception():
-            self._internal_que.put_nowait(None)  # signal the status reporter
             self._last_exc = _exc
 
     def _process_hardlinked_file_at_thread(
@@ -294,15 +269,12 @@ class RootfsDeployer:
                     target_mnt=self._rootfs_dir,
                     hardlink_skip_apply_permission=True,
                 )
-                if not first_to_prepare:
-                    self._internal_que.put_nowait(_entry_size)
                 return
 
             if _inlined:
                 self._hardlink_group[_inode_id] = prepare_regular_inlined(
                     _entry, target_mnt=self._rootfs_dir
                 )
-                self._internal_que.put_nowait(_entry_size)
                 return
 
             if first_to_prepare:
@@ -317,7 +289,6 @@ class RootfsDeployer:
                     _rs=self._resource_dir / _digest_hex,
                     target_mnt=self._rootfs_dir,
                 )
-                self._internal_que.put_nowait(_entry_size)
 
     def _process_normal_file_at_thread(
         self, _digest_hex: str, _entry: RegularFileRow, first_to_prepare: bool
@@ -326,7 +297,6 @@ class RootfsDeployer:
         _inlined = _entry.contents or _entry_size == 0
         if _inlined:
             prepare_regular_inlined(_entry, target_mnt=self._rootfs_dir)
-            self._internal_que.put_nowait(_entry_size)
             return
 
         if first_to_prepare:
@@ -341,26 +311,16 @@ class RootfsDeployer:
                 _rs=self._resource_dir / _digest_hex,
                 target_mnt=self._rootfs_dir,
             )
-            self._internal_que.put_nowait(_entry_size)
 
     def _process_regular_file_entries(self) -> None:
-        logger.info("process regular file entries ...")
         _first_prepared_digest: set[bytes] = set()
-
-        status_reporter_t = threading.Thread(
-            target=self._report_uploader_thread,
-            name="update_slot_status_reporter",
-            daemon=True,
-        )
-        status_reporter_t.start()
         try:
             with ThreadPoolExecutor(
                 max_workers=self.max_workers, thread_name_prefix="ota_update_slot"
             ) as pool:
                 for _entry in self._fst_db_helper.iter_regular_entries():
                     if self._last_exc:
-                        logger.error("detect worker failed, abort!")
-                        return
+                        break
                     self._se.acquire()
 
                     _digest = _entry.digest
@@ -386,26 +346,38 @@ class RootfsDeployer:
                             _entry,
                             _first_to_prepare,
                         ).add_done_callback(self._task_done_cb)
-        finally:
-            # finish up the report
-            self._internal_que.put_nowait(None)
-            status_reporter_t.join()
+        except Exception as e:
+            if _worker_exc := self._last_exc:
+                raise SetupRootfsFailed(
+                    f"process regular files failed: dispatch interrupted: {e!r}, "
+                    f"last workers error: {_worker_exc}"
+                ) from _worker_exc
+            raise SetupRootfsFailed(
+                f"process regular files failed: dispatch interrupted: {e!r}"
+            ) from e
+
+        if _exc := self._last_exc:
+            raise SetupRootfsFailed(
+                f"process regular files failed: last error: {_exc!r}"
+            ) from _exc
 
     def _process_dir_entries(self) -> None:
-        logger.info("start to process directory entries ...")
         for entry in self._fst_db_helper.iter_dir_entries():
             try:
                 prepare_dir(entry, target_mnt=self._rootfs_dir)
             except Exception as e:
-                raise SetupRootfsFailed(f"failed to process {entry=}: {e!r}") from e
+                raise SetupRootfsFailed(
+                    f"process dir failed: failed {entry=}: {e!r}"
+                ) from e
 
     def _process_non_regular_files(self) -> None:
-        logger.info("start to process non-regular entries ...")
         for entry in self._fst_db_helper.iter_non_regular_entries():
             try:
                 prepare_non_regular(entry, target_mnt=self._rootfs_dir)
             except Exception as e:
-                raise SetupRootfsFailed(f"failed to process {entry=}: {e!r}") from e
+                raise SetupRootfsFailed(
+                    f"process non-regular files failed: failed {entry=}: {e!r}"
+                ) from e
 
     # API
 
@@ -418,8 +390,3 @@ class RootfsDeployer:
         self._process_dir_entries()
         self._process_non_regular_files()
         self._process_regular_file_entries()
-
-        if _exc := self._last_exc:
-            raise SetupRootfsFailed(
-                f"failure during regular files processing: {_exc!r}"
-            )
