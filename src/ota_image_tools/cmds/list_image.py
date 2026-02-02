@@ -42,7 +42,7 @@ def list_image_cmd_args(
         parents=parent_parser,
     )
     list_image_arg_parser.add_argument(
-        "image_root",
+        "image",
         help="Points to an OTA image folder, or an OTA image artifact ZIP file.",
     )
     list_image_arg_parser.set_defaults(handler=list_image_cmd)
@@ -78,14 +78,17 @@ _DIV = "-" * 18
 def _render_output(_in: list[ImageManifest.Descriptor]) -> str:
     _buffer = StringIO()
 
-    _title = f"{_DIV} OTA image payloads {_DIV}"
+    _title = f"{_DIV} OTA image payloads {_DIV}\n"
     _buffer.write(_title)
     for idx, _entry in enumerate(_in):
         if (_annon := _entry.annotations) is None:
             _buffer.write(f"{idx=} (no annotations available)\n")
             continue
 
-        ecu_id, ota_release_key = _annon.pilot_auto_platform_ecu, _annon.ota_release_key
+        ecu_id, ota_release_key = (
+            _annon.pilot_auto_platform_ecu,
+            _annon.ota_release_key.value,
+        )
         _buffer.write(f"{idx=}\t{ecu_id=}\t{ota_release_key=}\n")
     _buffer.write("-" * len(_title))
     return _buffer.getvalue()
@@ -93,12 +96,12 @@ def _render_output(_in: list[ImageManifest.Descriptor]) -> str:
 
 def list_image_cmd(args: Namespace) -> None:
     logger.debug(f"calling {list_image_cmd.__name__} with {args}")
-    image_root = Path(args.image_root)
+    image = Path(args.image)
 
-    if image_root.is_dir():
-        print(f"OTA image folder: {image_root}")
-        res = _list_image_from_folder(image_root)
+    if image.is_dir():
+        print(f"OTA image folder: {image}")
+        res = _list_image_from_folder(image)
     else:
-        print(f"OTA image artifact: {image_root}")
-        res = _list_image_from_artifact(image_root)
+        print(f"OTA image artifact: {image}")
+        res = _list_image_from_artifact(image)
     print(_render_output(res))
