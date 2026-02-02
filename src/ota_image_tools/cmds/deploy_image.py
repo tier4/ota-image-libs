@@ -179,7 +179,8 @@ def deploy_image_cmd(args: Namespace) -> None:  # pragma: no cover
             concurrent_jobs=args.concurrent,
             read_size=args.read_size,
         )
-        resource_deployer.deploy_resources()
+        _count, _size = resource_deployer.deploy_resources()
+        logger.info(f"totally {_count} resources ({_size} bytes) have been deployed!")
 
         logger.info(f"setup rootfs at {rootfs_dir} ...")
         rootfs_deployer = RootfsDeployer(
