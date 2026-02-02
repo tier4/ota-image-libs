@@ -138,17 +138,15 @@ class OTAImageArtifactReader:
 
     def get_file_table(self, _image_config: ImageConfig, _save_dst: Path) -> Path:
         _ft_descriptor = _image_config.file_table
-        return _ft_descriptor.export_blob_from_bytes_stream(
-            self.open_blob(_ft_descriptor.digest.digest_hex),
-            _save_dst,
-            auto_decompress=True,
-        )
+        with self.open_blob(_ft_descriptor.digest.digest_hex) as src:
+            return _ft_descriptor.export_blob_from_bytes_stream(
+                src, _save_dst, auto_decompress=True
+            )
 
     def get_resource_table(self, _image_index: ImageIndex, _save_dst: Path) -> Path:
         if not (_descriptor := _image_index.image_resource_table):
             raise ValueError("invalid OTA image, resource_table not found!")
-        return _descriptor.export_blob_from_bytes_stream(
-            self.open_blob(_descriptor.digest.digest_hex),
-            _save_dst,
-            auto_decompress=True,
-        )
+        with self.open_blob(_descriptor.digest.digest_hex) as src:
+            return _descriptor.export_blob_from_bytes_stream(
+                src, _save_dst, auto_decompress=True
+            )
