@@ -17,6 +17,7 @@ This module prepares the deployment work directory, extracts and deploys
 OTA image resources, and sets up the target root filesystem based on
 an OTA image artifact.
 """
+
 from __future__ import annotations
 
 import os
