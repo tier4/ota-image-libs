@@ -13,5 +13,5 @@
 # limitations under the License.
 """Shared libs used by ota_image_tools cmds.
 
-This `lib` module is also intented for used by other tools that depends on ota-image-libs package.
+This `lib` module is also intended for use by other tools that depend on the ota-image-libs package.
 """

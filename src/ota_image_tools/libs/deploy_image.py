@@ -11,8 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Core implementation of OTA image artifact."""
+"""Core implementation for deploying OTA images from an artifact.
 
+This module prepares the deployment work directory, extracts and deploys
+OTA image resources, and sets up the target root filesystem based on
+an OTA image artifact.
+"""
 from __future__ import annotations
 
 import os
