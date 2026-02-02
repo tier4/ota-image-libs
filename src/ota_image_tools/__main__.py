@@ -36,6 +36,7 @@ def main():  # pragma: no cover
         deploy_image_cmd_args,
         inspect_blob_cmd_args,
         inspect_index_cmd_args,
+        list_image_cmd_args,
         lookup_image_cmd_args,
         verify_resources_cmd_args,
         verify_sign_cmd_args,
@@ -91,6 +92,7 @@ def main():  # pragma: no cover
     deploy_image_cmd_args(sub_arg_parser)
     inspect_blob_cmd_args(sub_arg_parser)
     inspect_index_cmd_args(sub_arg_parser)
+    list_image_cmd_args(sub_arg_parser)
     lookup_image_cmd_args(sub_arg_parser)
     verify_sign_cmd_args(sub_arg_parser)
     verify_resources_cmd_args(sub_arg_parser)

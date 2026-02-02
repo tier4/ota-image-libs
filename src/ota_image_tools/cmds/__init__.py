@@ -15,6 +15,7 @@
 from .deploy_image import deploy_image_cmd_args
 from .inspect_blob import inspect_blob_cmd_args
 from .inspect_index import inspect_index_cmd_args
+from .list_image import list_image_cmd_args
 from .lookup_image import lookup_image_cmd_args
 from .verify_resources import verify_resources_cmd_args
 from .verify_sign import verify_sign_cmd_args
@@ -23,6 +24,7 @@ __all__ = [
     "deploy_image_cmd_args",
     "inspect_blob_cmd_args",
     "inspect_index_cmd_args",
+    "list_image_cmd_args",
     "lookup_image_cmd_args",
     "verify_sign_cmd_args",
     "verify_resources_cmd_args",
