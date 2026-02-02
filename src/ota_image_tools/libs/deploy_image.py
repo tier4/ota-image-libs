@@ -206,7 +206,7 @@ class ResourcesDeployer:
                 count += 1
                 size += _size
 
-                if _exc := self._last_exc:
+                if self._last_exc:
                     break
 
                 self._concurrent_se.acquire()
