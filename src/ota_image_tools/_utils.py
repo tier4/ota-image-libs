@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+import time
 from functools import wraps
 from typing import Callable, NoReturn, TypeVar
 
@@ -15,6 +16,8 @@ P = ParamSpec("P")
 LOGGING_FORMAT = (
     "[%(asctime)s][%(levelname)s]-%(name)s:%(funcName)s:%(lineno)d,%(message)s"
 )
+
+logger = logging.getLogger("ota_image_tools")
 
 
 def configure_logging(log_level):
@@ -37,5 +40,18 @@ def func_call_with_se(
     def _wrapped(*args, **kwargs) -> RT:
         se.acquire()
         return _func(*args, **kwargs)
+
+    return _wrapped
+
+
+def measure_timecost(_func: Callable[P, RT]) -> Callable[P, RT]:
+    """Measure the time cost for a function running."""
+
+    @wraps(_func)
+    def _wrapped(*args: P.args, **kwargs: P.kwargs) -> RT:
+        _start_time = time.perf_counter()
+        _res = _func(*args, **kwargs)
+        logger.info(f"total time cost: {time.perf_counter() - _start_time}s")
+        return _res
 
     return _wrapped
