@@ -184,7 +184,7 @@ def deploy_image_cmd(args: Namespace) -> None:  # pragma: no cover
 
         logger.info(f"setup rootfs at {rootfs_dir} ...")
         rootfs_deployer = RootfsDeployer(
-            file_table_db_helper=workdir_setup._ft_db_helper,
+            file_table_db_helper=workdir_setup.file_table_helper,
             rootfs_dir=rootfs_dir,
             resource_dir=resource_dir,
             max_workers=args.workers,

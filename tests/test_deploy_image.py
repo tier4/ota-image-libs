@@ -179,7 +179,7 @@ def test_deploy_image_e2e(
     resources_deployer.deploy_resources()
 
     rootfs_deployer = RootfsDeployer(
-        file_table_db_helper=setup._ft_db_helper,
+        file_table_db_helper=setup.file_table_helper,
         rootfs_dir=rootfs_dir,
         resource_dir=resource_dir,
         max_workers=2,

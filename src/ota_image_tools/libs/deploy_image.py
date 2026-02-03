@@ -206,7 +206,7 @@ class ResourcesDeployer:
             self._last_exc = _exc
 
     def deploy_resources(self) -> tuple[int, int]:
-        ft_helper = self._workdir_setup._ft_db_helper
+        ft_helper = self._workdir_setup.file_table_helper
         with ThreadPoolExecutor(
             max_workers=self._workers_num,
             initializer=self._thread_initializer,
