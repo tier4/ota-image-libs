@@ -33,6 +33,7 @@ from ota_image_libs._crypto.x509_utils import (
 class TestLoadCertFromX5c:
     """Test load_cert_from_x5c function."""
 
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     def test_load_pem_certificate(self, root_ca_cert):
         """Test loading PEM-encoded certificate."""
         cert, _ = root_ca_cert
@@ -42,6 +43,7 @@ class TestLoadCertFromX5c:
         assert loaded_cert.subject == cert.subject
         assert loaded_cert.issuer == cert.issuer
 
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     def test_load_pem_certificate_from_string(self, root_ca_cert):
         """Test loading PEM-encoded certificate from string."""
         cert, _ = root_ca_cert
@@ -68,6 +70,7 @@ class TestLoadCertFromX5c:
         loaded_cert = load_cert_from_x5c(b64_der_str)
         assert loaded_cert.subject == cert.subject
 
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     def test_load_raw_der_certificate(self, root_ca_cert):
         """Test loading raw DER certificate."""
         cert, _ = root_ca_cert
@@ -76,6 +79,7 @@ class TestLoadCertFromX5c:
         loaded_cert = load_cert_from_x5c(der_bytes)
         assert loaded_cert.subject == cert.subject
 
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     def test_backward_compatibility_pem_format(self, root_ca_cert):
         """Test backward compatibility: ensure PEM format is still supported."""
         cert, _ = root_ca_cert
@@ -208,6 +212,7 @@ class TestX5cX509CertChain:
         assert len(chain.interms) == 1
         assert chain.interms[0] == intermediate_cert
 
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     def test_validator_with_pem_encoded_certs(
         self, root_ca_cert, intermediate_ca_cert, end_entity_cert
     ):
@@ -245,6 +250,7 @@ class TestX5cX509CertChain:
         assert chain.ee.subject == ee_cert.subject
         assert len(chain.interms) == 1
 
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     def test_backward_compatibility_pem_in_x5c(
         self, root_ca_cert, intermediate_ca_cert, end_entity_cert
     ):

@@ -100,6 +100,7 @@ class TestIndexJWTUtils:
         assert len(extracted_chain.interms) == 1
         assert extracted_chain.interms[0].subject == intermediate_cert.subject
 
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     def test_backward_compatibility_pem_certs_in_x5c_header(
         self,
         end_entity_cert: tuple[Certificate, EllipticCurvePrivateKey],
@@ -366,6 +367,7 @@ class TestDecodeIndexJwtWithVerification:
         with pytest.raises(InvalidSignatureError):
             decode_index_jwt_with_verification(jwt_token, wrong_chain)
 
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     def test_e2e_with_backward_compatible_pem(
         self, end_entity_cert, intermediate_ca_cert
     ):
