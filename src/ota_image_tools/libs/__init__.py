@@ -1,4 +1,4 @@
-# Copyright 2025 TIER IV, INC. All rights reserved.
+# Copyright 2022 TIER IV, INC. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,19 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Shared libs used by ota_image_tools cmds.
 
-# freeze_support MUST be called before as early as possible
-if __name__ == "__main__":  # pragma: no cover
-    from multiprocessing import freeze_support
-
-    freeze_support()
-
-
-def main():  # pragma: no cover
-    from ota_image_tools.main import main
-
-    main()
-
-
-if __name__ == "__main__":  # pragma: no cover
-    main()
+This `lib` module is also intended for use by other tools that depend on the ota-image-libs package.
+"""

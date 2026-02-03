@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+from pathlib import Path
 
 import pytest
 from cryptography import x509
@@ -32,6 +33,14 @@ from cryptography.x509.oid import NameOID
 from ota_image_libs._crypto.x509_utils import X5cX509CertChain
 from ota_image_libs.common.oci_spec import Sha256Digest
 from ota_image_libs.v1.image_index.schema import ImageIndex
+
+TEST_OTA_IMAGE = Path(__file__).parent / "data" / "ota-image.zip"
+
+
+@pytest.fixture
+def test_artifact() -> Path:
+    """Provide test OTA image artifact path."""
+    return TEST_OTA_IMAGE
 
 
 def ecdsa_keypair() -> tuple[EllipticCurvePrivateKey, EllipticCurvePublicKey]:
