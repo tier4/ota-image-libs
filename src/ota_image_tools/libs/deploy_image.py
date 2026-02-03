@@ -116,6 +116,14 @@ class OTAImageDeployerSetup:
                 f"failed to setup workdir for OTA image deploy: {e!r}"
             ) from e
 
+    @property
+    def file_table_helper(self) -> FileTableDBHelper:
+        return self._ft_db_helper
+
+    @property
+    def resource_table_helper(self) -> ResourceTableDBHelper:
+        return self._rst_db_helper
+
     def open_artifact(self) -> OTAImageArtifactReader:
         return OTAImageArtifactReader(self.artifact)
 
