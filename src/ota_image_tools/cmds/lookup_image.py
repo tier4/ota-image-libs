@@ -64,7 +64,7 @@ def lookup_image_cmd_args(
     )
     lookup_image_arg_parser.add_argument(
         "image_root",
-        help="Points to a folder holds OTA image, or to an OTA image artifact.",
+        help="Points to a folder that holds an OTA image, or to an OTA image artifact.",
     )
     lookup_image_arg_parser.set_defaults(handler=lookup_image_cmd)
 

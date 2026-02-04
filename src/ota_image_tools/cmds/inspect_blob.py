@@ -56,11 +56,11 @@ def inspect_blob_cmd_args(
     inspect_blob_arg_parser.add_argument(
         "--bytes",
         action="store_true",
-        help="Print out the blob as binary blob, only respect when `-o` is not specified.",
+        help="Print out the blob as binary blob, only respected when `-o` is not specified.",
     )
     inspect_blob_arg_parser.add_argument(
         "image_root",
-        help="Points to a folder holds OTA image, or to an OTA image artifact.",
+        help="Points to a folder that holds an OTA image, or to an OTA image artifact.",
     )
     inspect_blob_arg_parser.set_defaults(handler=inspect_blob_cmd)
 
