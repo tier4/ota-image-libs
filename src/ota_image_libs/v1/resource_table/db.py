@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Generator
 
 from simple_sqlite3_orm import (
-    CreateIndexParams,
     ORMBase,
     ORMThreadPoolBase,
 )
@@ -35,9 +34,6 @@ DB_TIMEOUT = 16  # seconds
 
 class _ResourceTableConfig:
     orm_bootstrap_table_name = RST_MANIFEST_TABLE_NAME
-    orm_bootstrap_indexes_params = [
-        CreateIndexParams(index_name="rst_digest_idx", index_cols=("digest",))
-    ]
 
 
 class ResourceTableORM(ORMBase[ResourceTableManifest], _ResourceTableConfig):
