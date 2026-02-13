@@ -39,13 +39,13 @@ ota-image-tools [OPTIONS] <SUBCOMMAND>
 ### Global Options
 
 | Option | Description |
-|--------|-------------|
+| ------ | ----------- |
 | `-d`, `--debug` | Enable debug logging |
 
 ### Subcommands
 
 | Command | Description |
-|---------|-------------|
+| ------- | ----------- |
 | `version` | Print the ota-image-libs version |
 | `deploy-image` | Deploy a system image payload from an OTA artifact to the filesystem |
 | `list-image` | List all image payloads in an OTA image |
@@ -90,7 +90,7 @@ with OTAImageArtifactReader("/path/to/ota-image.zip") as reader:
 Specification documents are available in the [docs/](docs/) directory:
 
 | Document | Description |
-|----------|-------------|
+| -------- | ----------- |
 | [image_index.md](docs/image_index.md) | OCI image index specification for OTA images |
 | [image_config.md](docs/image_config.md) | Per-image configuration schema |
 | [annotations.md](docs/annotations.md) | Standard annotation key definitions |
