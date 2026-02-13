@@ -19,6 +19,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.consts import IMAGE_INDEX_FNAME
 from ota_image_libs.v1.utils import check_if_valid_ota_image
 from ota_image_tools._utils import exit_with_err_msg
@@ -41,7 +42,7 @@ def inspect_index_cmd_args(
     )
     inspect_index_arg_parser.add_argument(
         "image_root",
-        help="Folder that holds the OTA image.",
+        help="Points to a folder that holds an OTA image, or to an OTA image artifact.",
     )
     inspect_index_arg_parser.set_defaults(handler=inspect_index_cmd)
 
@@ -49,9 +50,21 @@ def inspect_index_cmd_args(
 def inspect_index_cmd(args: Namespace) -> None:
     logger.debug(f"calling {inspect_index_cmd.__name__} with {args}")
     image_root = Path(args.image_root)
-    if not check_if_valid_ota_image(image_root):
-        exit_with_err_msg(f"{image_root} doesn't hold a valid OTA image.")
 
-    _index_f = image_root / IMAGE_INDEX_FNAME
-    _formatted_json = json.dumps(json.loads(_index_f.read_text()), indent=2)
-    print(_formatted_json)
+    if image_root.is_dir():
+        if not check_if_valid_ota_image(image_root):
+            exit_with_err_msg(f"{image_root} doesn't hold a valid OTA image.")
+
+        _index_f = image_root / IMAGE_INDEX_FNAME
+        _formatted_json = json.dumps(json.loads(_index_f.read_text()), indent=2)
+        return print(_formatted_json)
+
+    if image_root.is_file():
+        with OTAImageArtifactReader(image_root) as artifact_reader:
+            return print(
+                artifact_reader.parse_index().model_dump_json(
+                    indent=2, exclude_none=True
+                )
+            )
+
+    exit_with_err_msg(f"{image_root} is not a folder nor an OTA image artifact!")
