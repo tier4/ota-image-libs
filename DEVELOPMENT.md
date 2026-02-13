@@ -32,7 +32,7 @@ Run a specific test file or test case:
 
 ```bash
 uv run pytest tests/test_artifact_reader.py
-uv run pytest tests/test_artifact_reader.py::TestClassName::test_method_name
+uv run pytest tests/test_artifact_reader.py::TestOTAImageArtifactReaderBlobs::test_read_blob
 ```
 
 Run tests with coverage:

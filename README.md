@@ -59,10 +59,13 @@ ota-image-tools [OPTIONS] <SUBCOMMAND>
 
 ```bash
 # List images in an OTA artifact
-ota-image-tools list-image --image /path/to/ota-image.zip
+ota-image-tools list-image /path/to/ota-image
 
-# Verify the signature of an OTA image
-ota-image-tools verify-sign --image /path/to/ota-image.zip
+# Verify the signature of an OTA image (signature only)
+ota-image-tools verify-sign /path/to/ota-image
+
+# Verify the signature with cert chain validation against CA certificates
+ota-image-tools verify-sign --ca-dir /path/to/ca-certs /path/to/ota-image
 
 # Deploy an image to a target directory
 ota-image-tools deploy-image \
