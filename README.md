@@ -84,7 +84,7 @@ from ota_image_libs.v1.image_index.schema import ImageIndex
 
 # Read an OTA image artifact
 with OTAImageArtifactReader("/path/to/ota-image.zip") as reader:
-    index = reader.read_index()
+    index = reader.parse_index()
     print(index)
 ```
 
