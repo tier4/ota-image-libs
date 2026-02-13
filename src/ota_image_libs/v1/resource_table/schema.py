@@ -43,7 +43,7 @@ class ZstdCompressedResourceTableDescriptor(OCIDescriptor):
 
 class ResourceTableManifest(TableSpec):
     resource_id: Annotated[int, ConstrainRepr("PRIMARY KEY"), SkipValidation]
-    digest: Annotated[bytes, ConstrainRepr("NOT NULL"), SkipValidation]
+    digest: Annotated[bytes, ConstrainRepr("NOT NULL", "UNIQUE"), SkipValidation]
     size: Annotated[int, ConstrainRepr("NOT NULL"), SkipValidation]
 
     filter_applied: Annotated[Optional[FilterConfig], TypeAffinityRepr(bytes)] = None
