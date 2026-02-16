@@ -174,17 +174,19 @@ class ResourcesDeployer:
         """Get a compressed resource from the artifact with decompressing it."""
         dctx: zstandard.ZstdDecompressor = self._thread_local.dctx
         artifact_reader: OTAImageArtifactReader = self._thread_local.artifact_reader
-        with artifact_reader.open_blob(_digest.hex()) as _blob, open(
-            _dst, "wb"
-        ) as _dst_fp:
+        with (
+            artifact_reader.open_blob(_digest.hex()) as _blob,
+            open(_dst, "wb") as _dst_fp,
+        ):
             dctx.copy_stream(_blob, _dst_fp, read_size=self._read_size)
 
     def _get_resource(self, _digest: bytes, _dst: Path) -> None:
         """Get a resource from the artifact as it."""
         artifact_reader: OTAImageArtifactReader = self._thread_local.artifact_reader
-        with artifact_reader.open_blob(_digest.hex()) as _blob, open(
-            _dst, "wb"
-        ) as _dst_fp:
+        with (
+            artifact_reader.open_blob(_digest.hex()) as _blob,
+            open(_dst, "wb") as _dst_fp,
+        ):
             shutil.copyfileobj(_blob, _dst_fp, length=self._read_size)
 
     def _prepare_one_resource_at_thread(self, _digest: bytes):

@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, List, Literal
+from typing import ClassVar, Literal
 
 from typing_extensions import Self
 
@@ -92,7 +92,7 @@ class SliceFilter(FilterConfig):
 
     filter_type: ClassVar[Literal[b"s"]] = b"s"
 
-    slices: List[int]
+    slices: list[int]
 
     def bytes_schema_serializer(self) -> bytes:
         return b":".join(
