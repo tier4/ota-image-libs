@@ -470,11 +470,10 @@ class FileTableDBHelper:
         dst_dir = Path(dst_dir)
         dst_dir.mkdir(exist_ok=True, parents=True)
 
-        with contextlib.closing(
-            self.connect_fstable_db()
-        ) as _fs_conn, contextlib.closing(
-            sqlite3.connect(dst_dir / saved_name)
-        ) as _dst_conn:
+        with (
+            contextlib.closing(self.connect_fstable_db()) as _fs_conn,
+            contextlib.closing(sqlite3.connect(dst_dir / saved_name)) as _dst_conn,
+        ):
             with _dst_conn as conn:
                 _fs_conn.backup(conn)
 

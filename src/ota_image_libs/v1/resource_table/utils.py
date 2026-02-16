@@ -443,9 +443,10 @@ class ResumeOTADownloadHelper:
     def check_download_dir(self) -> int:
         """Scan through OTA download dir and try to recover resources."""
         _count = 0
-        with ThreadPoolExecutor(
-            thread_name_prefix="resume_ota_download"
-        ) as pool, os.scandir(self._download_dir) as it:
+        with (
+            ThreadPoolExecutor(thread_name_prefix="resume_ota_download") as pool,
+            os.scandir(self._download_dir) as it,
+        ):
             for entry in it:
                 if (
                     not entry.is_file(follow_symlinks=False)

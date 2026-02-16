@@ -95,9 +95,10 @@ def _inspect_blob_from_image_artifact(
     to_bytes: bool,
     encoding: str = "utf-8",
 ):
-    with OTAImageArtifactReader(
-        image_root
-    ) as artifact_reader, artifact_reader.open_blob(sha256_digest) as _blob:
+    with (
+        OTAImageArtifactReader(image_root) as artifact_reader,
+        artifact_reader.open_blob(sha256_digest) as _blob,
+    ):
         if save_dst:
             with open(save_dst, "wb") as _dst:
                 return shutil.copyfileobj(_blob, _dst)
