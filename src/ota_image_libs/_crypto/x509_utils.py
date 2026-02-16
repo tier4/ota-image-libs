@@ -88,7 +88,7 @@ def cert_to_b64_encoded_der_serializer(cert: Certificate) -> str:
 
 
 class CACertStore(dict[Name, Certificate]):
-    """ "Represents a store of X.509 CA certificates.
+    """Represents a store of X.509 CA certificates.
 
     Dict key is the subject of the certificate, and value is the Certificate inst.
     """
