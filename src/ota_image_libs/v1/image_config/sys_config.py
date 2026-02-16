@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -22,15 +22,15 @@ class SysConfig(MetaFileBase):
     MediaType = MediaTypeWithAltT[SYS_CONFIG_YAML, SYS_CONFIG_YAML_BACKWARD_COMPATIBLE]
 
     hostname: str
-    extra_mount: Union[List[MountCfg], None] = None
-    swap: Union[SwapCfg, None] = None
-    sysctl: Union[List[str], None] = None
-    persist_files: Union[List[str], None] = None
-    network: Union[Dict[str, Any], None] = None
-    otaclient_ecu_info: Union[Dict[str, Any], None] = Field(
+    extra_mount: list[MountCfg] | None = None
+    swap: SwapCfg | None = None
+    sysctl: list[str] | None = None
+    persist_files: list[str] | None = None
+    network: dict[str, Any] | None = None
+    otaclient_ecu_info: dict[str, Any] | None = Field(
         alias="otaclient.ecu_info", default=None
     )
-    otaclient_proxy_info: Union[Dict[str, Any], None] = Field(
+    otaclient_proxy_info: dict[str, Any] | None = Field(
         alias="otaclient.proxy_info", default=None
     )
 
@@ -44,4 +44,4 @@ class MountCfg(BaseModel):
     file_system: str
     mount_point: str
     type: str
-    options: Union[str, None] = None
+    options: str | None = None
