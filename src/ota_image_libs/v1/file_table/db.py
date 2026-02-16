@@ -19,7 +19,7 @@ import sqlite3
 import typing
 from contextlib import closing
 from pathlib import Path
-from typing import Callable, Generator, Optional
+from typing import Annotated, Callable, Generator, Optional
 
 from pydantic import SkipValidation
 from simple_sqlite3_orm import (
@@ -38,7 +38,6 @@ from simple_sqlite3_orm.utils import (
     enable_wal_mode,
     lookup_table,
 )
-from typing_extensions import Annotated
 
 from ota_image_libs.common.model_spec import MsgPackedDict, StrOrPath
 from ota_image_libs.v1.media_types import OTA_IMAGE_FILETABLE

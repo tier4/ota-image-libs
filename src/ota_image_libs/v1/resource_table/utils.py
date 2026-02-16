@@ -24,10 +24,9 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Generator, Optional, TypeAlias
 
 import zstandard
-from typing_extensions import TypeAlias
 
 from ota_image_libs._resource_filter import BundleFilter, CompressFilter, SliceFilter
 from ota_image_libs.common import tmp_fname
