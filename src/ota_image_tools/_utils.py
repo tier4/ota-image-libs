@@ -5,9 +5,7 @@ import sys
 import threading
 import time
 from functools import wraps
-from typing import Callable, NoReturn, TypeVar
-
-from typing_extensions import ParamSpec
+from typing import Callable, NoReturn, ParamSpec, TypeVar
 
 T = TypeVar("T")
 RT = TypeVar("RT")

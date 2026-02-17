@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Python 3.8 or later
+- Python 3.10 or later
 - [uv](https://docs.astral.sh/uv/) (package manager)
 - Git
 
@@ -18,7 +18,7 @@ uv sync
 
 ### Dev Container (optional)
 
-A [Dev Container](https://containers.dev/) configuration is provided in `.devcontainer/`. Open the project in VS Code and select **Reopen in Container** to get a pre-configured development environment with Python 3.8 and uv.
+A [Dev Container](https://containers.dev/) configuration is provided in `.devcontainer/`. Open the project in VS Code and select **Reopen in Container** to get a pre-configured development environment with Python 3.10 and uv.
 
 ## Running Tests
 
@@ -83,7 +83,7 @@ uv run pre-commit run --all-files
 
 ## Type Checking
 
-[Pyright](https://github.com/microsoft/pyright) is configured for type checking with standard mode targeting Python 3.8:
+[Pyright](https://github.com/microsoft/pyright) is configured for type checking with standard mode targeting Python 3.10:
 
 ```bash
 uv run pyright src/

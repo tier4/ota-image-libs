@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import time
-from typing import List, Union
 
 from pydantic import Field
 
@@ -62,38 +61,36 @@ class ImageIndex(MetaFileBase):
         # fmt: off
         build_tool_version: str = Field(alias=BUILD_TOOL_VERSION)
 
-        created_at: Union[int, None] = Field(alias=OTA_IMAGE_CREATED_AT, default=None)
-        signed_at: Union[int, None] = Field(alias=OTA_IMAGE_SIGNED_AT, default=None)
+        created_at: int | None = Field(alias=OTA_IMAGE_CREATED_AT, default=None)
+        signed_at: int | None = Field(alias=OTA_IMAGE_SIGNED_AT, default=None)
 
         # NOTE: will be calculated when the image is finalized
         total_blobs_count: int = Field(alias=OTA_IMAGE_BLOBS_COUNT, default=0)
         total_blobs_size: int = Field(alias=OTA_IMAGE_BLOBS_SIZE, default=0)
 
-        pilot_auto_platform: Union[str, None] = Field(alias=PILOT_AUTO_PLATFORM, default=None)
-        pilot_auto_source_repo: Union[str, None] = Field(alias=PILOT_AUTO_PROJECT_SOURCE, default=None)
-        pilot_auto_version: Union[str, None] = Field(alias=PILOT_AUTO_PROJECT_VERSION, default=None)
-        pilot_auto_release_commit: Union[str, None] = Field(alias=PILOT_AUTO_PROJECT_COMMIT, default=None)
-        pilot_auto_release_branch: Union[str, None] = Field(alias=PILOT_AUTO_PROJECT_BRANCH, default=None)
+        pilot_auto_platform: str | None = Field(alias=PILOT_AUTO_PLATFORM, default=None)
+        pilot_auto_source_repo: str | None = Field(alias=PILOT_AUTO_PROJECT_SOURCE, default=None)
+        pilot_auto_version: str | None = Field(alias=PILOT_AUTO_PROJECT_VERSION, default=None)
+        pilot_auto_release_commit: str | None = Field(alias=PILOT_AUTO_PROJECT_COMMIT, default=None)
+        pilot_auto_release_branch: str | None = Field(alias=PILOT_AUTO_PROJECT_BRANCH, default=None)
 
-        web_auto_project: Union[str, None] = Field(alias=WEB_AUTO_PROJECT, default=None)
-        web_auto_project_id: Union[str, None] = Field(alias=WEB_AUTO_PROJECT_ID, default=None)
-        web_auto_catalog: Union[str, None] = Field(alias=WEB_AUTO_CATALOG, default=None)
-        web_auto_catalog_id: Union[str, None] = Field(alias=WEB_AUTO_CATALOG_ID, default=None)
-        web_auto_env: Union[str, None] = Field(alias=WEB_AUTO_ENV, default=None)
-        web_auto_cicd_release_id: Union[str, None] = Field(alias=WEB_AUTO_CICD_RELEASE_ID, default=None)
-        web_auto_cicd_release_name: Union[str, None] = Field(alias=WEB_AUTO_CICD_RELEASE_NAME, default=None)
+        web_auto_project: str | None = Field(alias=WEB_AUTO_PROJECT, default=None)
+        web_auto_project_id: str | None = Field(alias=WEB_AUTO_PROJECT_ID, default=None)
+        web_auto_catalog: str | None = Field(alias=WEB_AUTO_CATALOG, default=None)
+        web_auto_catalog_id: str | None = Field(alias=WEB_AUTO_CATALOG_ID, default=None)
+        web_auto_env: str | None = Field(alias=WEB_AUTO_ENV, default=None)
+        web_auto_cicd_release_id: str | None = Field(alias=WEB_AUTO_CICD_RELEASE_ID, default=None)
+        web_auto_cicd_release_name: str | None = Field(alias=WEB_AUTO_CICD_RELEASE_NAME, default=None)
         # fmt: on
 
     SchemaVersion = SchemaVersion[2]
     MediaType = MediaType[IMAGE_INDEX]
 
-    manifests: List[
-        Union[
-            ImageManifest.Descriptor,
-            OTAClientPackageManifest.Descriptor,
-            ResourceTableDescriptor,
-            ZstdCompressedResourceTableDescriptor,
-        ]
+    manifests: list[
+        ImageManifest.Descriptor
+        | OTAClientPackageManifest.Descriptor
+        | ResourceTableDescriptor
+        | ZstdCompressedResourceTableDescriptor
     ]
     annotations: Annotations
 
