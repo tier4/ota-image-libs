@@ -14,11 +14,13 @@
 
 from __future__ import annotations
 
+from typing import Union
+
 from pydantic import BaseModel
 
 from ota_image_libs.v1.image_index.schema import ImageIndex
 
 
 class IndexJWTClaims(BaseModel):
-    iat: int | None = None
+    iat: Union[int, None] = None
     image_index: ImageIndex.Descriptor

@@ -19,7 +19,7 @@ import os
 import shutil
 from hashlib import sha256
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, Union
 
 import zstandard
 from pydantic import (
@@ -142,7 +142,7 @@ class OCIDescriptor(BaseModel):
 
     @computed_field
     @property
-    def artifactType(self) -> str | None:
+    def artifactType(self) -> Union[str, None]:
         return self.ArtifactType
 
     @model_validator(mode="before")

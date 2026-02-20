@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Optional, TypedDict
+from typing import Optional, TypedDict
 
 from pydantic import SkipValidation
 from simple_sqlite3_orm import (
@@ -22,6 +22,7 @@ from simple_sqlite3_orm import (
     TableSpec,
     TypeAffinityRepr,
 )
+from typing_extensions import Annotated
 
 from ota_image_libs._resource_filter import FilterConfig
 from ota_image_libs.common.model_spec import MediaType
