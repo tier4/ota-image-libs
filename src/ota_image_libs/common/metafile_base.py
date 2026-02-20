@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, ClassVar, Generic, Type, TypeVar, cast
+from typing import Any, ClassVar, Generic, Type, TypeVar, Union, cast
 
 import yaml
 from pydantic import (
@@ -121,7 +121,7 @@ class MetaFileBase(BaseModel):
 
     @computed_field
     @property
-    def schemaVersion(self) -> int | None:
+    def schemaVersion(self) -> Union[int, None]:
         return self.SchemaVersion
 
     @computed_field

@@ -18,7 +18,7 @@ import base64
 import logging
 import warnings
 from base64 import b64decode
-from typing import Any
+from typing import Any, Dict
 
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.x509 import (
@@ -87,8 +87,8 @@ def cert_to_b64_encoded_der_serializer(cert: Certificate) -> str:
     return _der_bytes.decode("utf-8")
 
 
-class CACertStore(dict[Name, Certificate]):
-    """Represents a store of X.509 CA certificates.
+class CACertStore(Dict[Name, Certificate]):
+    """ "Represents a store of X.509 CA certificates.
 
     Dict key is the subject of the certificate, and value is the Certificate inst.
     """
