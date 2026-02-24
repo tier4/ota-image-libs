@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from typing import Union
+
 from pydantic import Field
 
 from ota_image_libs import DIGEST_ALGORITHM
@@ -49,14 +51,14 @@ class ImageConfig(MetaFileBase):
     # fmt: off
     class Annotations(AliasEnabledModel):
         base_image: str = Field(alias=SYS_IMAGE_BASE_IMAGE)
-        os: str | None = Field(alias=OS, default=None)
-        os_version: str | None = Field(alias=OS_VERSION, default=None)
-        nvidia_jetson_bsp_version: str | None = Field(alias=NVIDIA_JETSON_BSP_VER, default=None)
+        os: Union[str, None] = Field(alias=OS, default=None)
+        os_version: Union[str, None] = Field(alias=OS_VERSION, default=None)
+        nvidia_jetson_bsp_version: Union[str, None] = Field(alias=NVIDIA_JETSON_BSP_VER, default=None)
 
         image_blobs_count: int = Field(alias=OTA_IMAGE_BLOBS_COUNT)
         image_blobs_size: int = Field(alias=OTA_IMAGE_BLOBS_SIZE)
 
-        sys_image_size: int | None = Field(alias=SYS_IMAGE_SIZE, default=None)
+        sys_image_size: Union[int, None] = Field(alias=SYS_IMAGE_SIZE, default=None)
         sys_image_regular_files_count: int = Field(alias=SYS_IMAGE_REGULAR_FILES_COUNT)
         sys_image_non_regular_files_count: int = Field(alias=SYS_IMAGE_NON_REGULAR_FILES_COUNT)
         sys_image_dirs_count: int = Field(alias=SYS_IMAGE_DIRS_COUNT)
@@ -68,13 +70,13 @@ class ImageConfig(MetaFileBase):
     MediaType = MediaType[OTA_IMAGE_CONFIG_JSON]
 
     resource_digest_alg: str = Field(init=False, default=DIGEST_ALGORITHM)
-    description: str | None = None
-    created: str | None = None
+    description: Union[str, None] = None
+    created: Union[str, None] = None
     architecture: str
-    os: str | None = None
-    os_version: str | None = Field(alias="os.version", default=None)
-    sys_config: SysConfig.Descriptor | None = None
-    file_table: FileTableDescriptor | ZstdCompressedFileTableDescriptor
+    os: Union[str, None] = None
+    os_version: Union[str, None] = Field(alias="os.version", default=None)
+    sys_config: Union[SysConfig.Descriptor, None] = None
+    file_table: Union[FileTableDescriptor, ZstdCompressedFileTableDescriptor]
     labels: Annotations
 
     @property

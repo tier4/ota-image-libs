@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import List, Literal, Union
 
 from pydantic import BaseModel
 
@@ -57,7 +57,7 @@ class OTAClientOriginManifest(BaseModel):
 
     schema_version: str = "1"
     date: str
-    packages: list[_Payload]
+    packages: List[_Payload]
 
 
 class OTAClientPackageManifest(MetaFileBase):
@@ -74,7 +74,7 @@ class OTAClientPackageManifest(MetaFileBase):
     ArtifactType = ArtifactType[OTACLIENT_PACKAGE_ARTIFACT]
 
     config: OTAClientOriginManifest.Descriptor
-    layers: list[OTAClientPayloadDescriptor]
+    layers: List[OTAClientPayloadDescriptor]
     annotations: Annotations
     # fmt: on
 
@@ -104,4 +104,4 @@ class OTAClientPayloadDescriptor(OCIDescriptor):
 
     MediaType = MediaType[OTACLIENT_APP_IMAGE]
 
-    annotations: Annotations | None = None
+    annotations: Union[Annotations, None] = None

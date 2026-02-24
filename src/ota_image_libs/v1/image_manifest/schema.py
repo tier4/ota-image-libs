@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, List, NamedTuple, Union
 
 from pydantic import Field
 
@@ -86,7 +86,7 @@ class ImageManifest(_ImageIDMixin, MetaFileBase):
         MediaType = MediaType[IMAGE_MANIFEST]
         ArtifactType = ArtifactType[OTA_IMAGE_ARTIFACT]
 
-        annotations: Annotations | None = None
+        annotations: Union[Annotations, None] = None
 
         @classmethod
         def export_metafile_to_resource_dir(
@@ -109,10 +109,10 @@ class ImageManifest(_ImageIDMixin, MetaFileBase):
         pilot_auto_platform_ecu: str = Field(alias=PLATFORM_ECU)
         ota_release_key: OTAReleaseKey = Field(alias=OTA_RELEASE_KEY, default=OTAReleaseKey.dev)
 
-        nvidia_jetson_bsp_version: str | None = Field(alias=NVIDIA_JETSON_BSP_VER, default=None)
-        pilot_auto_platform: str | None = Field(alias=PILOT_AUTO_PLATFORM, default=None)
-        pilot_auto_platform_ecu_hardware: str | None = Field(alias=PLATFORM_ECU_HARDWARE_MODEL, default=None)
-        pilot_auto_platform_ecu_hardware_series: str | None = Field(alias=PLATFORM_ECU_HARDWARE_SERIES, default=None)
+        nvidia_jetson_bsp_version: Union[str, None] = Field(alias=NVIDIA_JETSON_BSP_VER, default=None)
+        pilot_auto_platform: Union[str, None] = Field(alias=PILOT_AUTO_PLATFORM, default=None)
+        pilot_auto_platform_ecu_hardware: Union[str, None] = Field(alias=PLATFORM_ECU_HARDWARE_MODEL, default=None)
+        pilot_auto_platform_ecu_hardware_series: Union[str, None] = Field(alias=PLATFORM_ECU_HARDWARE_SERIES, default=None)
         pilot_auto_platform_ecu_arch: str = Field(alias=PLATFORM_ECU_ARCH)
 
     SchemaVersion= SchemaVersion[2]
@@ -120,9 +120,9 @@ class ImageManifest(_ImageIDMixin, MetaFileBase):
     ArtifactType = ArtifactType[OTA_IMAGE_MEDIA_TYPE]
 
     config: ImageConfig.Descriptor
-    layers: list[FileTableDescriptor | ZstdCompressedFileTableDescriptor]
+    layers: List[Union[FileTableDescriptor, ZstdCompressedFileTableDescriptor]]
     annotations: Annotations
 
     @property
-    def image_file_table(self) -> FileTableDescriptor | ZstdCompressedFileTableDescriptor:
+    def image_file_table(self) -> Union[FileTableDescriptor, ZstdCompressedFileTableDescriptor]:
         return self.layers[0]

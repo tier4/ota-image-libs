@@ -14,10 +14,10 @@
 
 from __future__ import annotations
 
+import sys
 from abc import abstractmethod
 from pathlib import Path
-from types import GenericAlias
-from typing import Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, Generic, TypeVar, Union
 from weakref import WeakValueDictionary
 
 from pydantic import BaseModel, ConfigDict, GetCoreSchemaHandler
@@ -27,11 +27,25 @@ from typing_extensions import Self, TypeVarTuple, Unpack
 from .model_fields import ConstFieldWithAltMeta
 from .msgpack_utils import pack_obj, unpack_dict
 
-StrOrPath = str | Path
-AnnotationsField = dict[str, str | int | float | bool]
+StrOrPath = Union[str, Path]
+AnnotationsField = Dict[str, Union[str, int, float, bool]]
 T = TypeVar("T")
 
 _parameterized_const_field = WeakValueDictionary()
+
+if sys.version_info >= (3, 10):
+    from types import GenericAlias
+else:
+    if TYPE_CHECKING:
+
+        class GenericAlias:
+            def __init__(self, origin: type, *args: Any) -> None:
+                self.origin = origin
+                self.args = args
+    else:
+        from typing import List
+
+        GenericAlias = type(List[int])
 
 
 class PydanticFromBytesSchema:
@@ -79,7 +93,7 @@ class PydanticFromBytesSchema:
         )
 
 
-class MsgPackedDict(dict[str, bytes], PydanticFromBytesSchema):
+class MsgPackedDict(Dict[str, bytes], PydanticFromBytesSchema):
     @classmethod
     def bytes_schema_validator(cls, _in: bytes) -> Self:
         try:
