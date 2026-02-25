@@ -17,6 +17,7 @@ An OTA image of OTA image specification version 1 is a unique representation of 
 This project uses [uv](https://docs.astral.sh/uv/) for project management, dependency management, and virtualenv management.
 
 **Testing:**
+
 ```bash
 uv run pytest                                                                       # Run all tests
 uv run pytest tests/test_artifact_reader.py                                         # Run a specific test file
@@ -24,6 +25,7 @@ uv run coverage run -m pytest && uv run coverage combine && uv run coverage repo
 ```
 
 **Linting & Formatting (ruff):**
+
 ```bash
 uv run ruff check src/ tests/         # Lint
 uv run ruff check --fix src/ tests/   # Auto-fix lint errors
@@ -31,11 +33,13 @@ uv run ruff format src/ tests/        # Format
 ```
 
 **Type Checking:**
+
 ```bash
 uv run pyright src/
 ```
 
 **Build:**
+
 ```bash
 uv build            # both source dist and wheel package
 uv build --sdist    # only source dist
@@ -112,15 +116,18 @@ The `docs/` directory contains the authoritative v1 specification documents. Con
 Three GitHub Actions workflows live under `.github/workflows/`:
 
 **`test.yaml` — Test CI**
+
 - Triggers on PRs to `main`/`v*`, pushes to `main`/`v*` (only when `src/`, `tests/`, or the workflow file changes), and manual dispatch.
 - Runs `uv run coverage run -m pytest` across a matrix of Python 3.8–3.13 (`fail-fast: false`).
 - On Python 3.13 only, runs a SonarCloud scan using the generated `coverage.xml`.
 
 **`release.yml` — Release CI**
+
 - Triggers on GitHub release (published) and manual dispatch.
 - Builds the wheel using the minimum supported Python version (read from `.python-version`), uploads it as an artifact, calculates checksums, and attaches all `dist/*` files to the GitHub release.
 
 **`gen_requirements_txt.yaml` — Requirements sync**
+
 - For syncing uv.lock from pyproject.toml, and one-way exporting `requirements.txt` from uv.lock for snyk scan.
 - Triggers on PRs to `main` when `pyproject.toml` changes, and manual dispatch.
 - Re-generates `requirements.txt` from `pyproject.toml` via `.github/tools/gen_requirements_txt.py` and auto-commits the update to the PR branch if changed.
