@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ota-image-libs` is a Python library and CLI toolkit for creating, reading, verifying, and deploying OTA image version 1.
 
+An OTA image of OTA image specification version 1 is a unique representation of an input system rootfs image, consists of:
+
+- A blob storage of all the unique resources of the rootfs, distinguished by SHA256.
+- A resource_table as the manifest of the blob storage.
+- A file_table that records all the file entries of the rootfs.
+
 ## Commands for dev
 
 This project uses [uv](https://docs.astral.sh/uv/) for project management, dependency management, and virtualenv management.
@@ -47,11 +53,11 @@ The repository contains two top-level packages under `src/`:
 
 ### OTA image V1 support (`ota_image_libs/v1/`)
 
-Currently ota-image-libs suports the OTA image specification version 1.
-All schemas required for OTA image specification v1 are as follow:
+All schemas required for OTA image specification v1 are as follows:
 
 | Module | Purpose |
 |---|---|
+| `artifact/` | Provides `packer` for bundling OTA image into OTA image artifact(requires Python ≥3.11), and `reader` for reading OTA image artifact |
 | `image_index/` | `ImageIndex` — top-level OCI image index |
 | `image_manifest/` | `ImageManifest` — per-image layer descriptors |
 | `image_config/` | `ImageConfig`, `SysConfig` — image and system configuration |
@@ -60,12 +66,25 @@ All schemas required for OTA image specification v1 are as follow:
 | `index_jwt/` | JWT signing/verification schema and utilities |
 | `otaclient_package/` | OTAClient release package format |
 
-Within each modules, besides schemas, utils for operating the metadata files are also available.
+Within each module, besides schemas, utils for operating the metadata are also available.
+
+### Blob Storage Optimization (`ota_image_libs/_resource_filter/`)
+
+`_resource_filter` defines the `filter_applied` field schema used in the resource table to describe how a logical resource is stored in the blob store of the OTA image.
+Each filter is serialized as `<code>:<msgpack-options>` bytes and registered via a filter registry.
+
+| Filter | Code | Purpose |
+|---|---|---|
+| `BundleFilter` | `b` | Resource is a slice of a larger bundle blob — stores `bundle_resource_id`, `offset`, `len` |
+| `CompressFilter` | `c` | Resource is stored compressed — stores `resource_id` and `compression_alg` (e.g. `zstd`) |
+| `SliceFilter` | `s` | Resource is reconstructed from an ordered list of sub-resource IDs — stores `slices` |
+
+`FilterConfig` is the abstract base class; concrete types self-register via `register_filter()` and are resolved at parse time by `get_filter_type()`.
 
 ### Common Internal Shared Libs and Utils (`ota_image_libs/common/`, `ota_image_libs/_crypto/`)
 
 - **`common/model_spec.py`** — Helper base classes and utils for using pydantic v2.
-- **`common/metafile_base.py`** — Helper base classes for defining and parsing OTA metadata files with using pydantic v2.
+- **`common/metafile_base.py`** — Helper base classes for defining and parsing OTA metadata files using pydantic v2.
 - **`common/db_utils.py`** — Shared helpers on top of `simple-sqlite3-orm` for using sqlite3.
 - **`common/msgpack_utils.py`** — MessagePack serialization helpers.
 - **`common/io.py`** — I/O utilities (e.g. zstandard/zstd compression wrappers).
@@ -74,7 +93,19 @@ Within each modules, besides schemas, utils for operating the metadata files are
 
 ### CLI Commands: ota-image-tools (`ota_image_tools/cmds/`)
 
+Handy CLI for working with OTA image.
+
 `list-image`, `inspect-index`, `inspect-blob`, `lookup-image`, `deploy-image`, `verify-sign`, `verify-resources`. All commands accept `-d`/`--debug` for debug logging.
+
+## Specification Docs (`docs/`)
+
+The `docs/` directory contains the authoritative v1 specification documents. Consult these when working on schemas or adding new features rather than reverse-engineering intent from code:
+
+- `image_spec.md` — Overall OTA image specification overview
+- `image_index.md`, `image_manifest.md`, `image_config.md`, `sys_config.md` — Per-component schemas
+- `annotations.md` — Standard annotation key definitions
+- `index_jwt.md` — JWT signing specification
+- `otaclient_package.md` — OTAClient release package format
 
 ## CI/CD
 
