@@ -46,6 +46,16 @@ uv build --sdist    # only source dist
 uv build --wheel    # only wheel package
 ```
 
+**Pre-commit:**
+
+```bash
+uv run pre-commit install           # install hooks (once after cloning)
+uv run pre-commit run               # run on changed files only
+uv run pre-commit run --all-files   # run all hooks manually
+```
+
+Hooks run on every commit: YAML/TOML validation, end-of-file fixer, trailing whitespace, ruff lint (with auto-fix), ruff format, and markdownlint (with auto-fix, config in `.markdownlint.yaml`).
+
 ## Architecture
 
 ### Project Layout
@@ -60,7 +70,7 @@ The repository contains two top-level packages under `src/`:
 All schemas required for OTA image specification v1 are as follows:
 
 | Module | Purpose |
-|---|---|
+| --- | --- |
 | `artifact/` | Provides `packer` for bundling OTA image into OTA image artifact(requires Python ≥3.11), and `reader` for reading OTA image artifact |
 | `image_index/` | `ImageIndex` — top-level OCI image index |
 | `image_manifest/` | `ImageManifest` — per-image layer descriptors |
@@ -78,7 +88,7 @@ Within each module, besides schemas, utils for operating the metadata are also a
 Each filter is serialized as `<code>:<msgpack-options>` bytes and registered via a filter registry.
 
 | Filter | Code | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `BundleFilter` | `b` | Resource is a slice of a larger bundle blob — stores `bundle_resource_id`, `offset`, `len` |
 | `CompressFilter` | `c` | Resource is stored compressed — stores `resource_id` and `compression_alg` (e.g. `zstd`) |
 | `SliceFilter` | `s` | Resource is reconstructed from an ordered list of sub-resource IDs — stores `slices` |
