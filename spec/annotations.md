@@ -4,7 +4,7 @@
 
 The required annotations are annotations that MUST be added to the OTA image.
 
-Except for explictly stated, the required annotations SHOULD be provided by the caller of OTA image builder.
+Except for explicitly stated, the required annotations SHOULD be provided by the caller of OTA image builder.
 
 - **`vnd.tier4.ota.ota-image-builder.version`** *string*
 
@@ -34,7 +34,7 @@ Except for explictly stated, the required annotations SHOULD be provided by the 
 The optional annotations are annotations that MAY be added to the OTA image.
 It is recommended to add these annotations to the OTA image to make the OTA image more self-descriptive and self-contained.
 
-Except for explictly stated, the required annotations SHOULD be provided by the caller of OTA image builder.
+Except for explicitly stated, the optional annotations SHOULD be provided by the caller of OTA image builder.
 
 - **`vnd.tier4.pilot-auto.platform`** *string*
 
@@ -93,6 +93,7 @@ Except for explictly stated, the required annotations SHOULD be provided by the 
   OPTIONAL, recommended. The hardware series of the ECU. This information should be provided by the user.
 
 - **`vnd.tier4.image.os`** *string*
+
   OPTIONAL, recommended. The operating system of the original system rootfs image, like `Ubuntu`, `Debian`, etc.
 
 - **`vnd.tier4.image.os.version`** *string*

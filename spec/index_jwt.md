@@ -13,7 +13,7 @@ Other algorithms MIGHT be supported in the future, but for OTA Image version 1, 
 
 - **`iat`** *int*
 
-    OPTIONAL. This field indicates when the JWT is created. It MUST be a integer of UNIX timestamp in seconds.
+    OPTIONAL. This field indicates when the JWT is created. It MUST be an integer of UNIX timestamp in seconds.
     OTA Image builder will set this field when signing the image.
 
 - **`image_index`** *index.json OCI Descriptor*
@@ -32,7 +32,7 @@ The following headers MUST be present in the `index.jwt`:
 - **`alg`** *string*
 
     REQUIRED. This field indicates the signing algorithm used for the index.jwt.
-    For OTA Image version 1, It MUST be `ES256`.
+    For OTA Image version 1, it MUST be `ES256`.
 
 - **`typ`** *string*
 

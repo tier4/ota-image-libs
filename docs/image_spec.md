@@ -1,1 +1,0 @@
-# OTA image specification, version 1

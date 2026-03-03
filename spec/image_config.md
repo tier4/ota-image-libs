@@ -46,11 +46,11 @@
 
 - **`sys_config`** *[OCI descriptor](https://github.com/opencontainers/image-spec/blob/main/descriptor.md)*
 
-    This OPTIONAL field specifies an OCI desriptor points to a [sys_config](sys_config.md) bound to this image_config.
+    This OPTIONAL field specifies an OCI descriptor that points to a [sys_config](sys_config.md) bound to this image_config.
 
 - **`file_table`** *[OCI descriptor](https://github.com/opencontainers/image-spec/blob/main/descriptor.md)*
 
-    This REQUIRED field specifies an OCI descriptor points to [file_table](file_table.md) of the original system rootfs image this image_config based on.
+    This REQUIRED field specifies an OCI descriptor that points to the [file_table](file_table.md) of the original system rootfs image this image_config is based on.
 
 - **`labels`** *string-string map*
 

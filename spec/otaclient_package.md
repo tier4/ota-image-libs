@@ -13,7 +13,7 @@
 
 - **`layers`** *array of OCI Descriptors*
 
-  A list of descriptors that each points an otaclient package artifact.
+  A list of descriptors that each points to an otaclient package artifact.
   Typically, we will have at least two otaclient APP image artifacts for `x86_64` and `arm64` architectures.
 
 ## Example OTAClient package artifact manifest

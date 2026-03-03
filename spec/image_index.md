@@ -2,7 +2,7 @@
 
 For OTA Image version 1, the image index.json is a valid OCI image index. The mediaType is still `application/vnd.oci.image.index.v1+json`.
 
-## Typeical index.json for OTA Image version 1
+## Typical index.json for OTA Image version 1
 
 A typical OTA image contains the following types of artifacts:
 
@@ -23,7 +23,7 @@ A typical OTA image contains the following types of artifacts:
 - **resource_table**
 
   Payload of the OTA image blob storage `resource_table`.
-  The `resource_table` is a SQLite3 database that contains the information of all the resources(blobs) in this OTA image, including the digest, size, and filter_applied if this OTA image is optimized when finalized.
+  The `resource_table` is a SQLite3 database that contains the information of all the resources (blobs) in this OTA image, including the digest, size, and filter_applied if this OTA image is optimized when finalized.
 
   The artifactType of the payload is `application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3`, normally it will be compressed with `zstd`, which can be identified by the suffix `+zstd` in the artifactType.
 
