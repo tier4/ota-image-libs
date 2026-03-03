@@ -1,12 +1,14 @@
 # Sys Config
 
+The sys_config is a YAML file that describes post OTA configuration for the target device.
+It is optionally referenced by the [image_config](image_config.md).
+
+OTA client MAY only support a subset of the features described in the schema.
+For minimum requirement, `hostname` and `persist_files` SHOULD be supported.
+
 ## Media Type
 
 `application/vnd.tier4.ota.sys-config.v1+yaml`
-
-For backward compatibility, `application/vnd.tier4.ota.file-based-ota-image.config.v1+yaml` is also accepted.
-
-The sys_config is a YAML file that describes system-level configuration for the target device. It is optionally referenced by the [image_config](image_config.md).
 
 ## Sys Config Schema
 
@@ -35,6 +37,7 @@ The sys_config is a YAML file that describes system-level configuration for the 
 - **`sysctl`** *array of strings*
 
     This OPTIONAL field specifies sysctl settings to apply on the target system.
+    Each line should be in `<key>=<value>` format.
 
 - **`persist_files`** *array of strings*
 
@@ -42,15 +45,16 @@ The sys_config is a YAML file that describes system-level configuration for the 
 
 - **`network`** *object*
 
-    This OPTIONAL field specifies network configuration for the target system.
+    This OPTIONAL field contains network configuration for the target system.
+    It MUST be an object of a valid netplan configuration YAML.
 
 - **`otaclient.ecu_info`** *object*
 
-    This OPTIONAL field specifies OTAClient ECU information configuration.
+    This OPTIONAL field contains a copy of OTAClient ecu_info.yaml configuration.
 
 - **`otaclient.proxy_info`** *object*
 
-    This OPTIONAL field specifies OTAClient proxy information configuration.
+    This OPTIONAL field contains a copy of OTAClient proxy_info.yaml configuration.
 
 ## Example sys_config
 
@@ -63,7 +67,7 @@ extra_mount:
     options: defaults
 swap:
   filepath: /swapfile
-  size: 4
+  size: 6 # GiB
 sysctl:
   - vm.swappiness=10
 persist_files:
