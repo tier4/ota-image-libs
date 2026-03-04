@@ -44,8 +44,8 @@ This is achieved by aligning to the following constrains:
 
 - **ZIP manifest** — The first entry(and second entry) of the archive MUST be:
 
-    - **`index.json`** MUST be the first file entry in the ZIP archive (see [ZIP manifest](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT) chapter 4.1.11).
-    - **`index.jwt`** If presented, MUST be the second file entry in the ZIP archive.
+  - **`index.json`** MUST be the first file entry in the ZIP archive (see [ZIP manifest](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT) chapter 4.1.11).
+  - **`index.jwt`** If presented, MUST be the second file entry in the ZIP archive.
 
 - **No ZIP-level compression** — All file entries MUST be stored without ZIP-level compression (`ZIP_STORED`).
   Resource-level compression (e.g., zstd) is applied during image build, not by the ZIP archive.
@@ -55,4 +55,3 @@ This is achieved by aligning to the following constrains:
 - **Fixed timestamps** — All file entries MUST have a fixed date-time of `2009-01-01 00:00:00`.
 
 - **Alphabetical ordering** — All files and dires are ordered alphabetically, except for the `index.json` and `index.jwt`.
-
