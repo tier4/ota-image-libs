@@ -156,4 +156,3 @@ These annotations SHOULD NOT be provided by the caller.
 - **`vnd.tier4.image.rootfs.size`** *integer*
 
   The total size in bytes of the original system rootfs of this OTA image payload.
-

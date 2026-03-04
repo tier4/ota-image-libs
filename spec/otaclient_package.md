@@ -8,7 +8,6 @@ The artifact type for the OTAClient release package artifact is:
 
 Schema as code: [`otaclient_package/schema.py`](../src/ota_image_libs/v1/otaclient_package/schema.py)
 
-
 ## OTAClient Package Manifest Schema
 
 - **`schemaVersion`** *int*
@@ -39,17 +38,17 @@ Schema as code: [`otaclient_package/schema.py`](../src/ota_image_libs/v1/otaclie
 
     Each layer descriptor MAY have `annotations` with the following fields:
 
-    - **`version`** *string* — The version of the OTAClient application image.
-    - **`type`** *string* — The type of the artifact (e.g., `squashfs`).
-    - **`architecture`** *string* — The target architecture. MUST be either `arm64` or `x86_64`.
-    - **`size`** *int* — The size of the artifact in bytes.
-    - **`checksum`** *string* — The SHA256 digest of the artifact (e.g., `sha256:<hex>`).
+  - **`version`** *string* — The version of the OTAClient application image.
+  - **`type`** *string* — The type of the artifact (e.g., `squashfs`).
+  - **`architecture`** *string* — The target architecture. MUST be either `arm64` or `x86_64`.
+  - **`size`** *int* — The size of the artifact in bytes.
+  - **`checksum`** *string* — The SHA256 digest of the artifact (e.g., `sha256:<hex>`).
 
 - **`annotations`** *string-string map*
 
     This REQUIRED field specifies the annotations for this OTAClient package manifest.
 
-    - **`date`** *string* — The date and time when this OTAClient release package was created, in ISO8601 format.
+  - **`date`** *string* — The date and time when this OTAClient release package was created, in ISO8601 format.
 
 ## Example OTAClient Package Artifact Manifest
 

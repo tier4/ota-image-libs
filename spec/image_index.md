@@ -25,14 +25,14 @@ Schema as code: [`image_index/schema.py`](../src/ota_image_libs/v1/image_index/s
 
     This REQUIRED field lists all manifest entries in this OTA image. Each entry is an OCI descriptor that may be one of the following types:
 
-    - **OTA image payload** — An [image manifest](image_manifest.md) descriptor with `artifactType` set to `application/vnd.tier4.ota.file-based-ota-image.v1`.
+  - **OTA image payload** — An [image manifest](image_manifest.md) descriptor with `artifactType` set to `application/vnd.tier4.ota.file-based-ota-image.v1`.
     Each descriptor MUST have `annotations` containing `vnd.tier4.pilot-auto.platform.ecu` and `vnd.tier4.ota.release-key`, which together uniquely identify the payload. Multiple image payloads can be included in a single OTA image.
     OTAClient uses it to update the target ECU.
 
-    - **OTAClient release package** — An [OTAClient package manifest](otaclient_package.md) descriptor with `artifactType` set to `application/vnd.tier4.otaclient.release-package.v1`.
+  - **OTAClient release package** — An [OTAClient package manifest](otaclient_package.md) descriptor with `artifactType` set to `application/vnd.tier4.otaclient.release-package.v1`.
     OTAClient can use this to update itself before performing the OTA.
 
-    - **Resource table** — A [resource table](resource_table.md) descriptor identified by its `mediaType` (`application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3` or `application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3+zstd`). At most one resource table entry exists in the manifests list.
+  - **Resource table** — A [resource table](resource_table.md) descriptor identified by its `mediaType` (`application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3` or `application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3+zstd`). At most one resource table entry exists in the manifests list.
 
 - **`annotations`** *string-string map*
 
