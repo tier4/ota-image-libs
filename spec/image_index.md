@@ -1,31 +1,82 @@
 # Image Index
 
-For OTA Image version 1, the image index.json is a valid OCI image index. The mediaType is still `application/vnd.oci.image.index.v1+json`.
+Image index is the top-level entry point of an OTA image.
+It is an [OCI image index](https://github.com/opencontainers/image-spec/blob/main/image-index.md)(`index.json`) that lists all manifests and metadata for the OTA image.
 
-## Typical index.json for OTA Image version 1
+Schema as code: [`image_index/schema.py`](../src/ota_image_libs/v1/image_index/schema.py)
 
-A typical OTA image contains the following types of artifacts:
+## Media Type
 
-- **OTA image payload**
+`application/vnd.oci.image.index.v1+json`
 
-  Payload that can be used by OTAClient to update an ECU.
-  The artifactType of the payload is `application/vnd.tier4.ota.file-based-ota-image.v1`.
+## Image Index Schema
 
-  Multiple image payloads can be included in an OTA image.
-  Image payload can be uniquely identified by the `ecu_id` and `ota_release_key`.
+- **`schemaVersion`** *int*
 
-- **OTAClient release package**
+    This REQUIRED field specifies the OCI image index schema version.
+    The value MUST be `2` (following the OCI image index specification).
 
-  Payload of the OTAClient release package. The artifactType of the payload is `application/vnd.tier4.otaclient.release-package.v1`.
+- **`mediaType`** *string*
 
-  OTAClient can use this payload to first update itself before actually doing the OTA.
+    This REQUIRED field specifies the media type of the image index.
+    The value MUST be `application/vnd.oci.image.index.v1+json` for OTA image index.
 
-- **resource_table**
+- **`manifests`** *array of [OCI descriptor](https://github.com/opencontainers/image-spec/blob/main/descriptor.md)*
 
-  Payload of the OTA image blob storage `resource_table`.
-  The `resource_table` is a SQLite3 database that contains the information of all the resources (blobs) in this OTA image, including the digest, size, and filter_applied if this OTA image is optimized when finalized.
+    This REQUIRED field lists all manifest entries in this OTA image. Each entry is an OCI descriptor that may be one of the following types:
 
-  The artifactType of the payload is `application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3`, normally it will be compressed with `zstd`, which can be identified by the suffix `+zstd` in the artifactType.
+    - **OTA image payload** — An [image manifest](image_manifest.md) descriptor with `artifactType` set to `application/vnd.tier4.ota.file-based-ota-image.v1`.
+    Each descriptor MUST have `annotations` containing `vnd.tier4.pilot-auto.platform.ecu` and `vnd.tier4.ota.release-key`, which together uniquely identify the payload. Multiple image payloads can be included in a single OTA image.
+    OTAClient uses it to update the target ECU.
+
+    - **OTAClient release package** — An [OTAClient package manifest](otaclient_package.md) descriptor with `artifactType` set to `application/vnd.tier4.otaclient.release-package.v1`.
+    OTAClient can use this to update itself before performing the OTA.
+
+    - **Resource table** — A [resource table](resource_table.md) descriptor identified by its `mediaType` (`application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3` or `application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3+zstd`). At most one resource table entry exists in the manifests list.
+
+- **`annotations`** *string-string map*
+
+    This REQUIRED field contains annotations for the OTA image as a whole. See the [Annotations for Image Index](#annotations-for-image-index) section below.
+
+## Annotations for Image Index
+
+The image index annotations describe the OTA image as a whole. All annotation keys are documented in [annotations.md](annotations.md).
+
+### Internal (automatically populated)
+
+The following annotations SHOULD be set by the OTA image builder implementation:
+
+- **`vnd.tier4.ota.ota-image-builder.version`** *string*:
+  Version of the OTA image builder.
+  This annotation SHOULD be set by the OTA image builder for this OTA image.
+
+- **`vnd.tier4.ota.image.created-at`** *integer*:
+  Unix timestamp when the image is finalized.
+  Presence of this field indicates the image is finalized and no further payloads can be added.
+
+- **`vnd.tier4.ota.image.signed-at`** *integer*":
+  Unix timestamp when the image is signed.
+
+- **`vnd.tier4.ota.image.blobs-count`** *integer*:
+  Total number of blobs in the blob storage.
+
+- **`vnd.tier4.ota.image.blobs-size`** *integer*:
+  Total size in bytes of all blobs in the blob storage.
+
+### Optional
+
+- **`vnd.tier4.pilot-auto.platform`** *string* — The pilot-auto platform code name.
+- **`vnd.tier4.pilot-auto.project.source-repo`** *string* — Build source code repository URL.
+- **`vnd.tier4.pilot-auto.project.version`** *string* — Project version.
+- **`vnd.tier4.pilot-auto.project.release-commit`** *string* — Git commit hash for the build source.
+- **`vnd.tier4.pilot-auto.project.release-branch`** *string* — Git branch name for the build source.
+- **`vnd.tier4.web-auto.project`** *string* — Web-auto project name.
+- **`vnd.tier4.web-auto.project-id`** *string* — Web-auto project ID.
+- **`vnd.tier4.web-auto.catalog`** *string* — Web-auto catalog name.
+- **`vnd.tier4.web-auto.catalog-id`** *string* — Web-auto catalog ID.
+- **`vnd.tier4.web-auto.env`** *string* — Web-auto environment name (e.g., `dev`, `stg`, `prd`).
+- **`vnd.tier4.web-auto.cicd.release-id`** *string* — CI/CD release ID.
+- **`vnd.tier4.web-auto.cicd.release-name`** *string* — CI/CD release display name.
 
 ## Example index.json
 
