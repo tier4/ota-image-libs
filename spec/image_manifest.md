@@ -1,24 +1,25 @@
 # Image Manifest
 
+The OTA image spec version 1 image manifest is an OCI image manifest with `artifactType` set to `application/vnd.tier4.ota.file-based-ota-image.v1`, which represents an OTA image payload within the OTA image.
+An image manifest is uniquely identified by the combination of `ecu_id` and `ota_release_key` in its annotations.
+
+Schema as code: [`image_manifest/schema.py`](../src/ota_image_libs/v1/image_manifest/schema.py)
+
 ## Media Type
 
 `application/vnd.oci.image.manifest.v1+json`
-
-For OTA Image version 1, the image_manifest is a valid OCI image manifest. Its artifactType is `application/vnd.tier4.ota.file-based-ota-image.v1`.
-
-Each image manifest represents an OTA image payload for a single ECU. An image manifest is uniquely identified by the combination of `ecu_id` and `ota_release_key` in its annotations.
 
 ## Image Manifest Schema
 
 - **`schemaVersion`** *int*
 
     This REQUIRED field specifies the image_manifest's schema version.
-    For OTA Image version 1, the value MUST be `2`.
+    For OTA image version 1, the value MUST be `2`.
 
 - **`mediaType`** *string*
 
     This REQUIRED field specifies the media type of the image manifest.
-    The value MUST be `application/vnd.oci.image.manifest.v1+json`.
+    The value MUST be `application/vnd.oci.image.manifest.v1+json` for OTA image version 1.
 
 - **`artifactType`** *string*
 
@@ -31,8 +32,9 @@ Each image manifest represents an OTA image payload for a single ECU. An image m
 
 - **`layers`** *array of [OCI descriptors](https://github.com/opencontainers/image-spec/blob/main/descriptor.md)*
 
-    This REQUIRED field specifies a list of OCI descriptors that point to the [file_table](file_table.md) of this image payload.
-    The first element in the array is the file table. The mediaType of the descriptor is either `application/vnd.tier4.ota.file-based-ota-image.file_table.v1.sqlite3` for uncompressed, or `application/vnd.tier4.ota.file-based-ota-image.file_table.v1.sqlite3+zstd` for zstd-compressed.
+    This REQUIRED field specifies a list of OCI descriptors.
+    For OTA image payload manifest, the array MUST contain exactly one entry, which points to the [file_table](file_table.md) of this image payload.
+    The mediaType of the descriptor is either `application/vnd.tier4.ota.file-based-ota-image.file_table.v1.sqlite3` for uncompressed, or `application/vnd.tier4.ota.file-based-ota-image.file_table.v1.sqlite3+zstd` for zstd-compressed.
 
 - **`annotations`** *string-string map*
 
@@ -46,7 +48,13 @@ Each image manifest represents an OTA image payload for a single ECU. An image m
 - **`vnd.tier4.pilot-auto.platform.ecu`** *string*
 
     This REQUIRED annotation specifies the ECU identifier for this image payload.
-    Together with `vnd.tier4.ota.release-key`, this uniquely identifies an image manifest in the OTA image.
+    Together with `vnd.tier4.ota.release-key`, this combination uniquely identifies an image manifest in the OTA image.
+
+- **`vnd.tier4.ota.release-key`** *string*
+
+    This REQUIRED annotation specifies the release key for this image payload.
+    The value MUST be either `dev` or `prd`.
+    Defaults to `dev` if not specified.
 
 - **`vnd.tier4.pilot-auto.platform.ecu.architecture`** *string*
 
@@ -54,11 +62,6 @@ Each image manifest represents an OTA image payload for a single ECU. An image m
     The value MUST be a valid architecture name like `x86_64`, `aarch64`, etc.
 
 ### Optional Annotations
-
-- **`vnd.tier4.ota.release-key`** *string*
-
-    This OPTIONAL annotation specifies the release key for this image payload.
-    The value MUST be either `dev` or `prd`. Defaults to `dev` if not specified.
 
 - **`vnd.tier4.pilot-auto.platform`** *string*
 
