@@ -1,13 +1,19 @@
 # File Table
 
+The file table is a SQLite3 database (`file_table.sqlite3`) that describes the original input system rootfs image of one OTA image payload, recording metadata of all the entries in that filesystem.
+
+It consists of five tables that together describe the complete filesystem tree: inodes, regular files, non-regular files, directories, and resource references.
+
+Each OTA image payload has its own file_table. In a multi-payload OTA image, there is one file_table per payload.
+
 ## Media Type
 
 - Uncompressed: `application/vnd.tier4.ota.file-based-ota-image.file_table.v1.sqlite3`
 - Zstd-compressed: `application/vnd.tier4.ota.file-based-ota-image.file_table.v1.sqlite3+zstd`
 
-The file table is a SQLite3 database (`file_table.sqlite3`) that records all file entries of the original system rootfs image. It consists of five tables that together describe the complete filesystem tree: inodes, regular files, non-regular files, directories, and resource references.
-
 ## Database Schema
+
+Database as Code: [`file_table/schema.py`](../src/ota_image_libs/v1/file_table/schema.py)
 
 ### Inode Table (`ft_inode`)
 
@@ -20,7 +26,7 @@ Stores inode metadata shared across file entries. Multiple file entries may refe
 | `gid` | int | NOT NULL | File owner group ID |
 | `mode` | int | NOT NULL | File permission and mode bits |
 | `links_count` | int | | Hard link count |
-| `xattrs` | bytes | | Extended attributes, stored as msgpack-encoded dict |
+| `xattrs` | bytes | | Extended attributes, stored as msgpacked dict |
 
 ### Regular Files Table (`ft_regular`)
 
@@ -62,13 +68,34 @@ Stores resource/blob references for regular files within this image payload. Eac
 | `resource_id` | int | PRIMARY KEY | Unique resource identifier |
 | `digest` | bytes | NOT NULL, UNIQUE | SHA256 digest of the resource |
 | `size` | int | NOT NULL | Size of the resource in bytes |
-| `contents` | bytes | | Inline resource data for small files |
+| `contents` | bytes | | (For file with size less than 64 bytes) Inline resource data for the file |
 
 ## Relationships
 
 ```text
-ft_regular.inode_id       → ft_inode.inode_id
-ft_regular.resource_id    → ft_resource.resource_id
-ft_non_regular.inode_id   → ft_inode.inode_id
-ft_dir.inode_id           → ft_inode.inode_id
++----------------+       +----------------+       +-----------------+
+|  ft_regular    |       |   ft_inode     |       | ft_non_regular  |
+|----------------|       |----------------|       |-----------------|
+| path       PK  |       | inode_id   PK  |       | path        PK  |
+| inode_id   FK  |------*| uid            |*------| inode_id    FK  |
+| resource_id FK |--+    | gid            |       | meta            |
++----------------+  |    | mode           |       +-----------------+
+                    |    | links_count    |
++----------------+  |    | xattrs         |
+|    ft_dir      |  |    +----------------+
+|----------------|  |           *
+| path       PK  |  |           |
+| inode_id   FK  |--+-----------+
++----------------+  |
+                    |    +----------------+
+                    |    | ft_resource    |
+                    |    |----------------|
+                    +---*| resource_id PK |
+                         | digest         |
+                         | size           |
+                         | contents       |
+                         +----------------+
+
+PK = Primary Key, FK = Foreign Key
+*  = referenced side (one), no mark = referencing side (many)
 ```
