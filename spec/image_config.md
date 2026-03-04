@@ -1,5 +1,11 @@
 # Image Config
 
+The image config is a per-OTA-image-payload JSON metadata file that describes a single OTA image payload.
+
+It records the payload's architecture, OS information, original system rootfs statistics, and references the [file table](file_table.md) and optional [system config](sys_config.md) for post OTA setup associated with this payload.
+
+Each [image manifest](image_manifest.md) points to exactly one image config.
+
 ## Media Type
 
 `application/vnd.tier4.ota.file-based-ota-image.config.v1+json`
@@ -33,14 +39,14 @@
 - **`architecture`** *string*
 
     This REQUIRED field specifies the architecture of the image payload.
-    The value MUST be valid architecture code like: `x86_64`, `aarch64`, etc.
+    The value MUST be a valid architecture code like: `x86_64`, `aarch64`, etc.
 
 - **`os`** *string*
 
     This OPTIONAL field specifies the operating system of the image payload.
-    The value MUST be valid OS code like: `linux`, `windows`, etc.
+    The value MUST be a valid OS code like: `linux`, `windows`, etc.
 
-- **`os_version`** *string*
+- **`os.version`** *string*
 
     This OPTIONAL field specifies the version of the operating system of the image payload, like `20.04`, `22.04` for Ubuntu based system, etc.
 
@@ -54,34 +60,36 @@
 
 - **`labels`** *string-string map*
 
-    This REQUIRED field specifies the statistics of the original system rootfs image.
+    This REQUIRED field specifies metadata and statistics of the original system rootfs image.
     See below chapter `Annotations for Image Config` for more details.
 
 ## Annotations for Image Config
 
-- **`base_image`** *string*
+- **`vnd.tier4.image.base-image`** *string*
 
     This REQUIRED annotation specifies the base image of the original system rootfs image.
     The value is corresponding to the `.webauto-ci.yml` file's `artifacts[].build.base_container_image` field.
 
-- **`os`** *string*
+- **`vnd.tier4.image.os`** *string*
 
     This OPTIONAL annotation specifies the operating system of the original system rootfs image.
-    The value MUST be valid OS name like: `Ubuntu`, `Debian`, etc.
+    The value MUST be a valid OS name like: `Ubuntu`, `Debian`, etc.
 
-- **`os_version`** *string*
+- **`vnd.tier4.image.os.version`** *string*
 
     This OPTIONAL annotation specifies the version of the operating system of the original system rootfs image, like `20.04`, `22.04` for Ubuntu based system, etc.
 
-- **`vnd.tier4.ota.image.blobs-count`** *int*
+- **`vnd.nvidia.jetson.bsp_ver`** *string*
 
+    This OPTIONAL annotation specifies the NVIDIA Jetson BSP version, if this OTA image payload is for an NVIDIA Jetson device.
+
+- **`vnd.tier4.ota.image.blobs-count`** *int*
   **`vnd.tier4.image.rootfs.unique-files-entries-count`** *int*
 
     This REQUIRED annotation specifies the number of blobs in the image payload.
     For file-based OTA image, these two fields have the same value.
 
 - **`vnd.tier4.ota.image.blobs-size`** *int*
-
   **`vnd.tier4.image.rootfs.unique-files-entries-size`** *int*
 
     This REQUIRED annotation specifies the total size of all blobs in the image payload.
@@ -89,7 +97,7 @@
 
 - **`vnd.tier4.image.rootfs.size`** *int*
 
-    This REQUIRED annotation specifies the size of the original system rootfs image.
+    This OPTIONAL annotation specifies the size of the original system rootfs image.
 
 - **`vnd.tier4.image.rootfs.regular-files-count`** *int*
 
@@ -116,7 +124,7 @@
   "sys_config": {
     "size": 45,
     "digest": "sha256:1e9e6d4088b9fa8c8e3dece14120be3047937e61248e4de89267cdb0f525e370",
-    "mediaType": "application/vnd.tier4.ota.file-based-ota-image.config.v1+yaml"
+    "mediaType": "application/vnd.tier4.ota.sys-config.v1+yaml"
   },
   "file_table": {
     "size": 49923445,
