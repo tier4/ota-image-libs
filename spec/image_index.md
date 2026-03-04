@@ -34,7 +34,7 @@ Schema as code: [`image_index/schema.py`](../src/ota_image_libs/v1/image_index/s
 
   - **Resource table** — A [resource table](resource_table.md) descriptor identified by its `mediaType` (`application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3` or `application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3+zstd`). At most one resource table entry exists in the manifests list.
 
-- **`annotations`** *string-string map*
+- **`annotations`** *JSON object (map) with string keys and string or integer values*
 
     This REQUIRED field contains annotations for the OTA image as a whole. See the [Annotations for Image Index](#annotations-for-image-index) section below.
 
