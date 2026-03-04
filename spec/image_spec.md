@@ -44,15 +44,9 @@ When the OTA image is finalized (optimized), resources in the blob storage may b
   The filter records the `resource_id` of the compressed blob and the `compression_alg` (e.g., `zstd`).
 - **SliceFilter** (`s`) — Resources are reconstructed from an ordered list of sub-resource IDs.
 
-## OTA Image Artifact
+## OTA Image Distribution
 
-An OTA image artifact is packaged as a ZIP file (strict subset).
-The artifact follows these rules:
-
-1. All entries are stored without ZIP-level compression (compression is done during image build at the resource level).
-2. Fixed permission bits (`0644` for files, `0755` for directories) and timestamps for reproducible builds.
-3. Individual files are limited to less than 32 MiB, except OTAClient packages which may be up to 4 GiB.
-4. Entries are ordered alphabetically.
+See [ota_image_distribution.md](ota_image_distribution.md) for the full distribution and artifact format specification.
 
 ## Media Types
 

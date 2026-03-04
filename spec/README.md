@@ -21,6 +21,7 @@ Following the OCI specification, OTA-specific artifacts and manifests have their
 | [file_table.md](file_table.md) | SQLite3 database schema for filesystem metadata |
 | [resource_table.md](resource_table.md) | SQLite3 database schema for blob storage manifest |
 | [otaclient_package.md](otaclient_package.md) | OTAClient release package format |
+| [ota_image_distribution.md](ota_image_distribution.md) | OTA image distribution |
 
 ## OTA Image Signing and Verification
 
