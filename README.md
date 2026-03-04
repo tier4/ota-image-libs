@@ -88,17 +88,22 @@ with OTAImageArtifactReader("/path/to/ota-image.zip") as reader:
     print(index)
 ```
 
-## Documentation
+## Specification
 
-Specification documents are available in the [docs/](docs/) directory:
+The OTA image v1 specification is available in the [spec/](spec/) directory:
 
 | Document | Description |
 | -------- | ----------- |
-| [image_index.md](docs/image_index.md) | OCI image index specification for OTA images |
-| [image_config.md](docs/image_config.md) | Per-image configuration schema |
-| [annotations.md](docs/annotations.md) | Standard annotation key definitions |
-| [index_jwt.md](docs/index_jwt.md) | JWT signing specification |
-| [otaclient_package.md](docs/otaclient_package.md) | OTAClient release package format |
+| [image_spec.md](spec/image_spec.md) | Overall OTA image specification overview |
+| [image_index.md](spec/image_index.md) | OCI image index specification for OTA images |
+| [image_manifest.md](spec/image_manifest.md) | Per-image payload manifest |
+| [image_config.md](spec/image_config.md) | Per-image configuration schema |
+| [sys_config.md](spec/sys_config.md) | System-level configuration |
+| [file_table.md](spec/file_table.md) | SQLite database schema for filesystem metadata |
+| [resource_table.md](spec/resource_table.md) | SQLite database schema for blob storage manifest |
+| [annotations.md](spec/annotations.md) | Standard annotation key definitions |
+| [index_jwt.md](spec/index_jwt.md) | JWT signing specification |
+| [otaclient_package.md](spec/otaclient_package.md) | OTAClient release package format |
 
 ## Supported Python Versions
 

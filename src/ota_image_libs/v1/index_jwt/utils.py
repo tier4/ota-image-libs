@@ -51,7 +51,7 @@ def compose_index_jwt(
     """
     Compose JWS for index.json with signing certificate chain and signing key.
 
-    The algorithm used for signing is ES256 (EdDSA with SHA-256).
+    The algorithm used for signing is ES256 (ECDSA with SHA-256).
     The signing certificate chain is included in the JWT header as `x5c` field.
 
     Args:

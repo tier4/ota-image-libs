@@ -40,10 +40,9 @@ class FilterConfig(PydanticFromBytesSchema):
     `<filter_type>:<filter_specific_options>`
 
     When validating, we will get one of the following concrete FilterOption subtype:
-    1. InlineFilter: code_name `i`
-    2. BundleFilter: code_name `b`
-    3. CompressFilter: code_name `c`
-    4. SliceFilter: code_name `s`
+    1. BundleFilter: code_name `b`
+    2. CompressFilter: code_name `c`
+    3. SliceFilter: code_name `s`
 
     When serializing, instance of FilterConfigBase subtype will be serialized into bytes.
     """

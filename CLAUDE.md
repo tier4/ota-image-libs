@@ -111,12 +111,14 @@ Handy CLI for working with OTA image.
 
 `list-image`, `inspect-index`, `inspect-blob`, `lookup-image`, `deploy-image`, `verify-sign`, `verify-resources`. All commands accept `-d`/`--debug` for debug logging.
 
-## Specification Docs (`docs/`)
+## OTA Image Specification Version 1 Specification (`spec/`)
 
-The `docs/` directory contains the authoritative v1 specification documents. Consult these when working on schemas or adding new features rather than reverse-engineering intent from code:
+The `spec/` directory contains the authoritative OTA image version 1 specification.
+Consult these when working on schemas or adding new features rather than reverse-engineering intent from code:
 
 - `image_spec.md` — Overall OTA image specification overview
 - `image_index.md`, `image_manifest.md`, `image_config.md`, `sys_config.md` — Per-component schemas
+- `file_table.md`, `resource_table.md` — SQLite database schemas
 - `annotations.md` — Standard annotation key definitions
 - `index_jwt.md` — JWT signing specification
 - `otaclient_package.md` — OTAClient release package format
