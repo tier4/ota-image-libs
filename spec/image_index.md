@@ -54,7 +54,7 @@ The following annotations SHOULD be set by the OTA image builder implementation:
   Unix timestamp when the image is finalized.
   Presence of this field indicates the image is finalized and no further payloads can be added.
 
-- **`vnd.tier4.ota.image.signed-at`** *integer*":
+- **`vnd.tier4.ota.image.signed-at`** *integer*:
   Unix timestamp when the image is signed.
 
 - **`vnd.tier4.ota.image.blobs-count`** *integer*:
