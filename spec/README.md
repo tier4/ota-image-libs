@@ -4,7 +4,7 @@ This directory contains the authoritative specification for OTA image version 1.
 
 ## Overview
 
-[image_spec.md](image_spec.md) — Overall OTA image specification overview, including components, blob storage, artifact format, and media types
+[image_spec.md](image_spec.md) — Overall OTA image specification overview, including components, blob storage, and artifact format
 
 ## Artifact Types for OTA Image
 
