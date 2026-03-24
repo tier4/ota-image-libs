@@ -1,0 +1,62 @@
+name: Sync uv.lock on pyproject.toml and exporting requirements.txt.
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+on:
+  pull_request:
+    branches:
+      - main
+      - v*
+    paths:
+      - "uv.lock"
+      - "pyproject.toml"
+      - .github/workflows/sync_lockfile.yml
+  # allow manual dispatch of this workflow
+  workflow_dispatch:
+
+jobs:
+  sync-lockfile:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
+          # use repo scope deploy key for the later git operations, so that the pushed commit can trigger the
+          #   workflow as expected. The default action token GITHUB_TOKEN cannot trigger new workflows.
+          # For more details about this restriction, please refer to:
+          #   https://github.com/peter-evans/create-pull-request/issues/48 and
+          #   https://github.com/peter-evans/create-pull-request/blob/main/docs/concepts-guidelines.md#triggering-further-workflow-runs
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+          persist-credentials: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.10.12"
+      - name: Setup python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version-file: ".python-version"
+      - name: Sync uv.lock with pyproject.toml
+        run: uv lock
+      - name: Export requirements.txt from uv.lock
+        run: uv export --frozen --no-dev --no-editable --no-hashes --no-emit-project > requirements.txt
+      - name: Commit change if needed
+        run: |
+          git config --global user.name "github-actions[bot]+sync-lockfile"
+          git config --global user.email "github-actions[bot]+sync-lockfile@users.noreply.github.com"
+
+          if git diff --exit-code uv.lock requirements.txt; then
+            echo "Skip commit as no changes are made"
+          else
+            echo "Commit changes on update ..."
+            git add uv.lock requirements.txt
+            git commit -m "[GHA] Update uv.lock and/or requirements.txt"
+            git push
+          fi
