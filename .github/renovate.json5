@@ -34,7 +34,7 @@
     // do not update Python version used for building whl
     {
       "matchManagers": ["github-actions"],
-      "matchDepNames": ["python"],
+      "matchDepNames": ["actions/setup-python"],
       "enabled": false
     }
   ],

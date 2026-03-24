@@ -9,11 +9,11 @@ on:
   pull_request:
     branches:
       - main
-      - v.*
+      - v*
     paths:
       - "uv.lock"
       - "pyproject.toml"
-      - .github/workflows/sync_lockfile.yaml
+      - .github/workflows/sync_lockfile.yml
   # allow manual dispatch of this workflow
   workflow_dispatch:
 
@@ -27,7 +27,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
           # use repo scope deploy key for the later git operations, so that the pushed commit can trigger the
           #   workflow as expected. The default action token GITHUB_TOKEN cannot trigger new workflows.
           # For more details about this restriction, please refer to:
