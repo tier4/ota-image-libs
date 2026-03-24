@@ -32,7 +32,7 @@ pydantic-core==2.41.5 ; python_full_version >= '3.9'
     # via pydantic
 pyjwt==2.9.0 ; python_full_version < '3.9'
     # via ota-image-libs
-pyjwt==2.10.1 ; python_full_version >= '3.9'
+pyjwt==2.12.1 ; python_full_version >= '3.9'
     # via ota-image-libs
 pyyaml==6.0.3
     # via ota-image-libs
@@ -52,6 +52,7 @@ typing-extensions==4.15.0 ; python_full_version >= '3.9'
     #   ota-image-libs
     #   pydantic
     #   pydantic-core
+    #   pyjwt
     #   simple-sqlite3-orm
     #   typing-inspection
 typing-inspection==0.4.2 ; python_full_version >= '3.9'
