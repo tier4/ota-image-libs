@@ -14,6 +14,7 @@
 
 from .deploy_image import deploy_image_cmd_args
 from .get_filetable import get_filetable_cmd_args
+from .get_resourcetable import get_resourcetable_cmd_args
 from .inspect_blob import inspect_blob_cmd_args
 from .inspect_index import inspect_index_cmd_args
 from .list_image import list_image_cmd_args
@@ -24,6 +25,7 @@ from .verify_sign import verify_sign_cmd_args
 __all__ = [
     "deploy_image_cmd_args",
     "get_filetable_cmd_args",
+    "get_resourcetable_cmd_args",
     "inspect_blob_cmd_args",
     "inspect_index_cmd_args",
     "list_image_cmd_args",
