@@ -18,12 +18,15 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from pprint import pformat
 from typing import TYPE_CHECKING
 
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier
-from ota_image_tools._utils import exit_with_err_msg, measure_timecost
+from ota_image_tools._utils import (
+    exit_with_err_msg,
+    measure_timecost,
+    ppformat_json_string,
+)
 from ota_image_tools.libs.deploy_image import (
     CONCURRENT_JOBS,
     READ_SIZE,
@@ -151,21 +154,22 @@ def deploy_image_cmd(args: Namespace) -> None:  # pragma: no cover
         logger.info(f"will use system image payload with {image_id=}.")
         workdir_setup = OTAImageDeployerSetup(image_id, artifact=image, workdir=workdir)
 
+        _image_index = workdir_setup.image_index
         logger.info(
-            "OTA image index labels: \n"
-            f"{pformat(workdir_setup.image_index.annotations.model_dump(exclude_none=True))}"
+            f"OTA image index: {ppformat_json_string(_image_index.export_metafile())}"
         )
 
-        assert workdir_setup.image_manifest
+        _image_manifest = workdir_setup.image_manifest
+        assert _image_manifest
         logger.info(
             f"OTA image manifest annotations for {image_id=}: \n"
-            f"{pformat(workdir_setup.image_manifest.annotations.model_dump(exclude_none=True))}"
+            f"{ppformat_json_string(_image_manifest.export_metafile())}"
         )
 
         image_config = workdir_setup.image_config
         logger.info(
             "system image statistics: \n"
-            f"{pformat(image_config.labels.model_dump(exclude_none=True))}"
+            f"{ppformat_json_string(image_config.export_metafile())}"
         )
 
         logger.info("deploy resources for later setting rootfs ...")
