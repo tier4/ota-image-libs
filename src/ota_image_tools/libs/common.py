@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple
 
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.consts import RESOURCE_DIR
@@ -26,7 +25,7 @@ from ota_image_tools._utils import exit_with_err_msg
 
 def resolve_image_from_folder(
     image_root: Path, image_id: ImageIdentifier
-) -> Tuple[ImageManifest.Descriptor, Path]:
+) -> tuple[ImageManifest.Descriptor, Path]:
     """Validate an OTA image folder and resolve the image manifest descriptor.
 
     Returns:
