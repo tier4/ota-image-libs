@@ -140,7 +140,7 @@ class TestGetFiletableFromFolder:
 
         image_id = ImageIdentifier(ecu_id="test_ecu", release_key=OTAReleaseKey.dev)
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(SystemExit):
             _get_filetable_from_folder(
                 image_root=invalid_folder,
                 image_id=image_id,

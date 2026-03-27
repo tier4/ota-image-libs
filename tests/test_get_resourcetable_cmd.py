@@ -78,7 +78,7 @@ class TestGetResourcetableFromFolder:
         invalid_folder.mkdir()
         output = tmp_path / "resource_table.db"
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(SystemExit):
             _get_resourcetable_from_folder(
                 image_root=invalid_folder,
                 output=output,
