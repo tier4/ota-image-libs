@@ -26,6 +26,8 @@ from ota_image_libs import version
 from ota_image_tools._utils import configure_logging
 from ota_image_tools.cmds import (
     deploy_image_cmd_args,
+    get_filetable_cmd_args,
+    get_resourcetable_cmd_args,
     inspect_blob_cmd_args,
     inspect_index_cmd_args,
     list_image_cmd_args,
@@ -86,6 +88,8 @@ def main():  # pragma: no cover
     )
 
     deploy_image_cmd_args(sub_arg_parser)
+    get_filetable_cmd_args(sub_arg_parser)
+    get_resourcetable_cmd_args(sub_arg_parser)
     inspect_blob_cmd_args(sub_arg_parser)
     inspect_index_cmd_args(sub_arg_parser)
     list_image_cmd_args(sub_arg_parser)

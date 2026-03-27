@@ -18,6 +18,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 from cryptography import x509
@@ -41,6 +42,15 @@ TEST_OTA_IMAGE = Path(__file__).parent / "data" / "ota-image.zip"
 def test_artifact() -> Path:
     """Provide test OTA image artifact path."""
     return TEST_OTA_IMAGE
+
+
+@pytest.fixture(scope="session")
+def extracted_ota_image(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Extract the test OTA image to a temporary folder."""
+    extract_dir = tmp_path_factory.mktemp("ota_image")
+    with ZipFile(TEST_OTA_IMAGE, "r") as zf:
+        zf.extractall(extract_dir)
+    return extract_dir
 
 
 def ecdsa_keypair() -> tuple[EllipticCurvePrivateKey, EllipticCurvePublicKey]:
