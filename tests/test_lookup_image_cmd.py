@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from zipfile import ZipFile
 
 import pytest
 
@@ -34,7 +33,6 @@ from ota_image_tools.cmds.lookup_image import (
     lookup_image_cmd,
     lookup_image_cmd_args,
 )
-from tests.conftest import TEST_OTA_IMAGE
 
 
 @pytest.fixture
@@ -183,7 +181,7 @@ class TestLookupImageFromArtifact:
             ecu_id="nonexistent_ecu", release_key=OTAReleaseKey.dev
         )
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(SystemExit):
             _lookup_image_from_artifact(
                 image_root=test_artifact,
                 image_id=image_id,
@@ -193,14 +191,6 @@ class TestLookupImageFromArtifact:
 
 class TestLookupImageFromFolder:
     """Tests for looking up images from extracted OTA image folder."""
-
-    @pytest.fixture
-    def extracted_ota_image(self, tmp_path: Path) -> Path:
-        """Extract the test OTA image to a temporary folder."""
-        extract_dir = tmp_path / "ota_image"
-        with ZipFile(TEST_OTA_IMAGE, "r") as zf:
-            zf.extractall(extract_dir)
-        return extract_dir
 
     def test_lookup_image_manifest(
         self,
@@ -274,14 +264,6 @@ class TestLookupImageFromFolder:
 
 class TestLookupImageCmd:
     """Tests for the main lookup_image_cmd handler."""
-
-    @pytest.fixture
-    def extracted_ota_image(self, tmp_path: Path) -> Path:
-        """Extract the test OTA image to a temporary folder."""
-        extract_dir = tmp_path / "ota_image"
-        with ZipFile(TEST_OTA_IMAGE, "r") as zf:
-            zf.extractall(extract_dir)
-        return extract_dir
 
     def test_cmd_with_artifact(
         self,

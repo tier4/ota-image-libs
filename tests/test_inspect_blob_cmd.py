@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 from unittest.mock import patch
-from zipfile import ZipFile
 
 import pytest
 
@@ -29,7 +28,6 @@ from ota_image_tools.cmds.inspect_blob import (
     inspect_blob_cmd,
     inspect_blob_cmd_args,
 )
-from tests.conftest import TEST_OTA_IMAGE
 
 
 @pytest.fixture
@@ -159,14 +157,6 @@ class TestInspectBlobFromArtifact:
 class TestInspectBlobFromFolder:
     """Tests for inspecting blobs from extracted OTA image folder."""
 
-    @pytest.fixture
-    def extracted_ota_image(self, tmp_path: Path) -> Path:
-        """Extract the test OTA image to a temporary folder."""
-        extract_dir = tmp_path / "ota_image"
-        with ZipFile(TEST_OTA_IMAGE, "r") as zf:
-            zf.extractall(extract_dir)
-        return extract_dir
-
     def test_inspect_blob_save_to_file(
         self, extracted_ota_image: Path, valid_blob_digest: str, tmp_path: Path
     ):
@@ -225,14 +215,6 @@ class TestInspectBlobFromFolder:
 
 class TestInspectBlobCmd:
     """Tests for the main inspect_blob_cmd handler."""
-
-    @pytest.fixture
-    def extracted_ota_image(self, tmp_path: Path) -> Path:
-        """Extract the test OTA image to a temporary folder."""
-        extract_dir = tmp_path / "ota_image"
-        with ZipFile(TEST_OTA_IMAGE, "r") as zf:
-            zf.extractall(extract_dir)
-        return extract_dir
 
     def test_cmd_with_artifact(
         self,

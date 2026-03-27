@@ -28,7 +28,6 @@ from ota_image_tools.cmds.inspect_index import (
     inspect_index_cmd,
     inspect_index_cmd_args,
 )
-from tests.conftest import TEST_OTA_IMAGE
 
 
 class TestInspectIndexCmdArgs:
@@ -74,14 +73,6 @@ class TestInspectIndexCmdWithArtifact:
 
 class TestInspectIndexCmdWithFolder:
     """Tests for inspect_index_cmd with extracted OTA image folder."""
-
-    @pytest.fixture
-    def extracted_ota_image(self, tmp_path: Path) -> Path:
-        """Extract the test OTA image to a temporary folder."""
-        extract_dir = tmp_path / "ota_image"
-        with ZipFile(TEST_OTA_IMAGE, "r") as zf:
-            zf.extractall(extract_dir)
-        return extract_dir
 
     def test_inspect_index_from_folder(self, extracted_ota_image: Path, capsys):
         """Test inspecting index.json from extracted OTA image folder."""
