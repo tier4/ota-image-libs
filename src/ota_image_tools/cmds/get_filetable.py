@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, OTAReleaseKey
+from ota_image_libs.v1.utils import check_if_valid_ota_image
 from ota_image_tools._utils import exit_with_err_msg
 from ota_image_tools.libs.common import (
     resolve_image_from_artifact,
@@ -54,8 +55,8 @@ def get_filetable_cmd_args(
         "--release-key",
         help="The release variant of the image to lookup.",
         type=OTAReleaseKey,
-        choices=[OTAReleaseKey.prd.value, OTAReleaseKey.dev.value],
-        default=OTAReleaseKey.dev.value,
+        choices=[OTAReleaseKey.prd, OTAReleaseKey.dev],
+        default=OTAReleaseKey.dev,
     )
     get_filetable_arg_parser.add_argument(
         "-o",
@@ -73,6 +74,9 @@ def get_filetable_cmd_args(
 def _get_filetable_from_folder(
     *, image_root: Path, image_id: ImageIdentifier, output: Path
 ) -> None:
+    if not check_if_valid_ota_image(image_root):
+        exit_with_err_msg(f"{image_root} doesn't hold a valid OTA image.")
+
     _image_manifest_descriptor, _resource_dir = resolve_image_from_folder(
         image_root, image_id
     )

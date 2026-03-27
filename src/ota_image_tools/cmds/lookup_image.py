@@ -61,8 +61,8 @@ def lookup_image_cmd_args(
         "--release-key",
         help="The release variant of the image to lookup.",
         type=OTAReleaseKey,
-        choices=[OTAReleaseKey.prd.value, OTAReleaseKey.dev.value],
-        default=OTAReleaseKey.dev.value,
+        choices=[OTAReleaseKey.prd, OTAReleaseKey.dev],
+        default=OTAReleaseKey.dev,
     )
     lookup_image_arg_parser.add_argument(
         "image_root",

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.consts import RESOURCE_DIR
 from ota_image_libs.v1.image_index.utils import ImageIndexHelper
+from ota_image_libs.v1.utils import check_if_valid_ota_image
 from ota_image_tools._utils import exit_with_err_msg
 
 if TYPE_CHECKING:
@@ -56,6 +57,9 @@ def get_resourcetable_cmd_args(
 
 
 def _get_resourcetable_from_folder(*, image_root: Path, output: Path) -> None:
+    if not check_if_valid_ota_image(image_root):
+        exit_with_err_msg(f"{image_root} doesn't hold a valid OTA image.")
+
     _index_helper = ImageIndexHelper(image_root)
     image_index = _index_helper.image_index
 
@@ -73,7 +77,10 @@ def _get_resourcetable_from_folder(*, image_root: Path, output: Path) -> None:
 def _get_resourcetable_from_artifact(*, image_root: Path, output: Path) -> None:
     with OTAImageArtifactReader(image_root) as artifact_reader:
         image_index = artifact_reader.parse_index()
-        artifact_reader.get_resource_table(image_index, output)
+        try:
+            artifact_reader.get_resource_table(image_index, output)
+        except ValueError as e:
+            exit_with_err_msg(f"failed to get the resource_table: {e!r}")
     logger.info(f"resource_table saved to {output}")
 
 

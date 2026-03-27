@@ -26,7 +26,7 @@ from ota_image_tools._utils import exit_with_err_msg
 def resolve_image_from_folder(
     image_root: Path, image_id: ImageIdentifier
 ) -> tuple[ImageManifest.Descriptor, Path]:
-    """Validate an OTA image folder and resolve the image manifest descriptor.
+    """Resolve the image manifest descriptor from an OTA image folder.
 
     Returns:
         A tuple of (manifest_descriptor, resource_dir).
