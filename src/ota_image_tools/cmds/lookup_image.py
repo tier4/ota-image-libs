@@ -19,11 +19,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
-from ota_image_libs.v1.consts import RESOURCE_DIR
-from ota_image_libs.v1.image_index.utils import ImageIndexHelper
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, OTAReleaseKey
 from ota_image_libs.v1.utils import check_if_valid_ota_image
 from ota_image_tools._utils import exit_with_err_msg
+from ota_image_tools.libs.common import (
+    resolve_image_from_artifact,
+    resolve_image_from_folder,
+)
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser, Namespace, _SubParsersAction
@@ -71,18 +73,14 @@ def lookup_image_cmd_args(
 
 def _lookup_image_from_folder(
     *, image_root: Path, image_id: ImageIdentifier, show_image_config: bool
-):
+) -> None:
     if not check_if_valid_ota_image(image_root):
         exit_with_err_msg(f"{image_root} doesn't hold a valid OTA image.")
 
-    _index_helper = ImageIndexHelper(image_root)
-    image_index = _index_helper.image_index
+    _image_manifest_descriptor, _resource_dir = resolve_image_from_folder(
+        image_root, image_id
+    )
 
-    _image_manifest_descriptor = image_index.find_image(image_id)
-    if not _image_manifest_descriptor:
-        exit_with_err_msg(f"failed to find image with {image_id=}")
-
-    _resource_dir = image_root / RESOURCE_DIR
     image_manifest_fpath = _resource_dir / _image_manifest_descriptor.digest.digest_hex
     if show_image_config:
         image_manifest = _image_manifest_descriptor.load_metafile_from_resource_dir(
@@ -100,9 +98,7 @@ def _lookup_image_from_artifact(
     *, image_root: Path, image_id: ImageIdentifier, show_image_config: bool
 ):
     with OTAImageArtifactReader(image_root) as artifact_reader:
-        image_index = artifact_reader.parse_index()
-        image_manifest = artifact_reader.select_image_payload(image_id, image_index)
-        assert image_manifest
+        image_manifest = resolve_image_from_artifact(artifact_reader, image_id)
 
         if show_image_config:
             image_config, _ = artifact_reader.get_image_config(image_manifest)
