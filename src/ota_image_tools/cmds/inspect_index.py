@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.consts import IMAGE_INDEX_FNAME
 from ota_image_libs.v1.utils import check_if_valid_ota_image
-from ota_image_tools._utils import exit_with_err_msg
+from ota_image_tools._utils import exit_with_err_msg, ppformat_json_string
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser, Namespace, _SubParsersAction
@@ -61,10 +61,6 @@ def inspect_index_cmd(args: Namespace) -> None:
 
     if image_root.is_file():
         with OTAImageArtifactReader(image_root) as artifact_reader:
-            return print(
-                artifact_reader.parse_index().model_dump_json(
-                    indent=2, exclude_none=True
-                )
-            )
-
+            _image_index = artifact_reader.parse_index()
+            return print(ppformat_json_string(_image_index.export_metafile()))
     exit_with_err_msg(f"{image_root} is not a folder nor an OTA image artifact!")

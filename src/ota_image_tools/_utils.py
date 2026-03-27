@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import sys
 import threading
@@ -55,3 +56,7 @@ def measure_timecost(_func: Callable[P, RT]) -> Callable[P, RT]:
         return _res
 
     return _wrapped
+
+
+def ppformat_json_string(_in: str) -> str:
+    return json.dumps(json.loads(_in), indent=2)

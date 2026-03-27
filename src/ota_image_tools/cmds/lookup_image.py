@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, OTAReleaseKey
 from ota_image_libs.v1.utils import check_if_valid_ota_image
-from ota_image_tools._utils import exit_with_err_msg
+from ota_image_tools._utils import exit_with_err_msg, ppformat_json_string
 from ota_image_tools.libs.common import (
     resolve_image_from_artifact,
     resolve_image_from_folder,
@@ -103,10 +103,10 @@ def _lookup_image_from_artifact(
         if show_image_config:
             image_config, _ = artifact_reader.get_image_config(image_manifest)
             logger.info("image_config: ")
-            print(f"{image_config.model_dump_json(indent=2, exclude_none=True)}")
-
-        logger.info("image_manifest: ")
-        print(f"{image_manifest.model_dump_json(indent=2, exclude_none=True)}")
+            print(f"{ppformat_json_string(image_config.export_metafile())}")
+        else:
+            logger.info("image_manifest: ")
+            print(f"{ppformat_json_string(image_manifest.export_metafile())}")
 
 
 def lookup_image_cmd(args: Namespace) -> None:
