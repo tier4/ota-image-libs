@@ -194,7 +194,7 @@ class TestComposeJwtFromAwsKmsSignResponse:
         der_sig = _ecdsa_der_sign(priv, b"header.payload", digest())
 
         token = compose_jwt_from_aws_kms_sign_response(
-            b"header.payload", kms_sign_resp=der_sig, kms_sign_algorithm=aws_alg
+            "header.payload", kms_sign_resp=der_sig, kms_sign_algorithm=aws_alg
         )
 
         assert isinstance(token, str)
@@ -209,7 +209,7 @@ class TestComposeJwtFromAwsKmsSignResponse:
     def test_rejects_unsupported_kms_algorithm(self, bad_alg: str):
         with pytest.raises(ValueError):
             compose_jwt_from_aws_kms_sign_response(
-                b"header.payload", kms_sign_resp=b"\x00", kms_sign_algorithm=bad_alg
+                "header.payload", kms_sign_resp=b"\x00", kms_sign_algorithm=bad_alg
             )
 
 
@@ -254,7 +254,7 @@ class TestAwsKmsSigningRoundTrip:
         #    and compose the complete JWT
         der_sig = base64.b64decode(kms_resp["Signature"])
         token = compose_jwt_from_aws_kms_sign_response(
-            signing_input.encode(),
+            signing_input,
             kms_sign_resp=der_sig,
             kms_sign_algorithm=kms_resp["SigningAlgorithm"],
         )
@@ -284,7 +284,7 @@ class TestAwsKmsSigningRoundTrip:
             signing_algorithm="ECDSA_SHA_256",
         )
         token = compose_jwt_from_aws_kms_sign_response(
-            signing_input.encode(),
+            signing_input,
             kms_sign_resp=base64.b64decode(kms_resp["Signature"]),
             kms_sign_algorithm=kms_resp["SigningAlgorithm"],
         )
@@ -320,7 +320,7 @@ class TestAwsKmsSigningRoundTrip:
             signing_algorithm="ECDSA_SHA_256",
         )
         token = compose_jwt_from_aws_kms_sign_response(
-            signing_input.encode(),
+            signing_input,
             kms_sign_resp=base64.b64decode(kms_resp["Signature"]),
             kms_sign_algorithm=kms_resp["SigningAlgorithm"],
         )
@@ -361,7 +361,7 @@ class TestAwsKmsSigningWithIndexJwtReadPath:
             signing_algorithm="ECDSA_SHA_256",
         )
         token = compose_jwt_from_aws_kms_sign_response(
-            signing_input.encode(),
+            signing_input,
             kms_sign_resp=base64.b64decode(kms_resp["Signature"]),
             kms_sign_algorithm=kms_resp["SigningAlgorithm"],
         )

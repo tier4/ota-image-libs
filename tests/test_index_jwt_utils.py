@@ -33,14 +33,49 @@ from cryptography.x509 import Certificate
 from cryptography.x509.oid import NameOID
 from jwt.exceptions import InvalidSignatureError
 
+from ota_image_libs._crypto.aws_kms import (
+    AWSKMSSignAlgorithm,
+    compose_jwt_from_aws_kms_sign_response,
+    get_aws_sign_alg,
+)
 from ota_image_libs._crypto.x509_utils import X5cX509CertChain
 from ota_image_libs.common.oci_spec import Sha256Digest
+from ota_image_libs.v1.consts import ALLOWED_JWT_ALG
 from ota_image_libs.v1.image_index.schema import ImageIndex
+from ota_image_libs.v1.index_jwt.schema import IndexJWTClaims
 from ota_image_libs.v1.index_jwt.utils import (
+    X5C_FNAME,
     compose_index_jwt,
+    compose_unsigned_index_jwt_for_aws_kms_sign,
     decode_index_jwt_with_verification,
     get_index_jwt_sign_cert_chain,
 )
+
+
+def _b64url_decode(segment: str) -> bytes:
+    """base64url-decode a JWS segment, restoring the stripped padding."""
+    raw = segment.encode("ascii")
+    raw += b"=" * (-len(raw) % 4)
+    return base64.urlsafe_b64decode(raw)
+
+
+def _simulate_kms_es256_sign(
+    priv_key: EllipticCurvePrivateKey, signing_input: str
+) -> str:
+    """Stand in for an AWS KMS ``ECDSA_SHA_256`` ``Sign`` round-trip.
+
+    KMS signs the ``header.payload`` input and returns a DER-encoded ECDSA
+    signature; ``priv_key.sign(..., ec.ECDSA(SHA256))`` produces the same DER
+    form, which we feed back through the library's response composer (along with
+    the original signing input str) to get the complete JWT a caller would
+    obtain after calling KMS.
+    """
+    der_sig = priv_key.sign(signing_input.encode("ascii"), ec.ECDSA(hashes.SHA256()))
+    return compose_jwt_from_aws_kms_sign_response(
+        signing_input,
+        kms_sign_resp=der_sig,
+        kms_sign_algorithm="ECDSA_SHA_256",
+    )
 
 
 class TestIndexJWTUtils:
@@ -425,3 +460,118 @@ class TestDecodeIndexJwtWithVerification:
         # Verify claims are correct
         assert verified_claims.image_index.digest == descriptor.digest
         assert verified_claims.image_index.size == descriptor.size
+
+
+class TestComposeUnsignedIndexJwtForAwsKmsSign:
+    def test_returns_kms_alg_and_two_segment_signing_input(
+        self, cert_chain: X5cX509CertChain, image_descriptor: ImageIndex.Descriptor
+    ):
+        """Returns the KMS algorithm plus the unsigned ``header.payload`` input."""
+        aws_alg, signing_input = compose_unsigned_index_jwt_for_aws_kms_sign(
+            image_descriptor, sign_cert_chain=cert_chain
+        )
+
+        assert isinstance(aws_alg, AWSKMSSignAlgorithm)
+        # the index.jwt alg is fixed to ALLOWED_JWT_ALG (ES256 -> ECDSA_SHA_256)
+        assert aws_alg == AWSKMSSignAlgorithm.ECDSA_SHA_256
+        assert aws_alg == get_aws_sign_alg(ALLOWED_JWT_ALG)
+
+        # signing input is the unsigned `header.payload`, no signature segment yet
+        assert isinstance(signing_input, str)
+        assert signing_input.count(".") == 1
+
+    def test_header_carries_alg_typ_and_x5c_chain(
+        self, cert_chain: X5cX509CertChain, image_descriptor: ImageIndex.Descriptor
+    ):
+        """The JWT header advertises ES256/JWT and embeds the x5c cert chain."""
+        _, signing_input = compose_unsigned_index_jwt_for_aws_kms_sign(
+            image_descriptor, sign_cert_chain=cert_chain
+        )
+
+        header = json.loads(_b64url_decode(signing_input.split(".", 1)[0]))
+        assert header["alg"] == ALLOWED_JWT_ALG
+        assert header["typ"] == "JWT"
+        # x5c carries the base64-DER serialized signing cert chain (RFC 7515)
+        assert header[X5C_FNAME] == cert_chain.serializer()
+
+    def test_payload_carries_image_index_and_iat(
+        self, cert_chain: X5cX509CertChain, image_descriptor: ImageIndex.Descriptor
+    ):
+        """The payload stamps ``iat`` and round-trips the image_index descriptor."""
+        before = int(datetime.now(timezone.utc).timestamp())
+        _, signing_input = compose_unsigned_index_jwt_for_aws_kms_sign(
+            image_descriptor, sign_cert_chain=cert_chain
+        )
+        after = int(datetime.now(timezone.utc).timestamp())
+
+        payload = json.loads(_b64url_decode(signing_input.split(".")[1]))
+
+        assert isinstance(payload["iat"], int)
+        assert before <= payload["iat"] <= after
+
+        # the payload re-validates into the same claims the read path expects
+        claims = IndexJWTClaims.model_validate(payload)
+        assert claims.image_index.digest == image_descriptor.digest
+        assert claims.image_index.size == image_descriptor.size
+
+    def test_x5c_header_uses_chain_serializer_output(
+        self, mocker, image_descriptor: ImageIndex.Descriptor
+    ):
+        """The x5c header is populated verbatim from ``sign_cert_chain.serializer()``."""
+        mock_cert_chain = mocker.MagicMock()
+        mock_cert_chain.serializer.return_value = ["cert-a", "cert-b"]
+
+        _, signing_input = compose_unsigned_index_jwt_for_aws_kms_sign(
+            image_descriptor, sign_cert_chain=mock_cert_chain
+        )
+
+        mock_cert_chain.serializer.assert_called_once_with()
+        header = json.loads(_b64url_decode(signing_input.split(".", 1)[0]))
+        assert header[X5C_FNAME] == ["cert-a", "cert-b"]
+
+
+class TestComposeUnsignedIndexJwtForAwsKmsSignRoundTrip:
+    """A KMS-signed unsigned index.jwt must verify through the read path."""
+
+    def test_full_round_trip_via_index_jwt_read_path(
+        self,
+        cert_chain: X5cX509CertChain,
+        end_entity_cert: tuple[Certificate, EllipticCurvePrivateKey],
+        image_descriptor: ImageIndex.Descriptor,
+    ):
+        """compose unsigned -> KMS sign (simulated) -> extract chain -> verify."""
+        _, ee_key = end_entity_cert  # conftest end-entity key is P-256 (ES256)
+
+        # 1. compose the unsigned signing input for the descriptor
+        aws_alg, signing_input = compose_unsigned_index_jwt_for_aws_kms_sign(
+            image_descriptor, sign_cert_chain=cert_chain
+        )
+        assert aws_alg == AWSKMSSignAlgorithm.ECDSA_SHA_256
+
+        # 2. AWS KMS Sign (simulated with the EE key) + compose the final JWT
+        token = _simulate_kms_es256_sign(ee_key, signing_input)
+        assert token.count(".") == 2
+
+        # 3. the existing read path extracts the x5c chain and verifies the sig
+        extracted_chain = get_index_jwt_sign_cert_chain(token)
+        assert extracted_chain.ee.subject == cert_chain.ee.subject
+
+        verified = decode_index_jwt_with_verification(token, extracted_chain)
+        assert verified.image_index.digest == image_descriptor.digest
+        assert verified.image_index.size == image_descriptor.size
+
+    def test_signature_from_unrelated_key_fails_verification(
+        self, cert_chain: X5cX509CertChain, image_descriptor: ImageIndex.Descriptor
+    ):
+        """A signature from a key unrelated to the x5c end-entity cert is rejected."""
+        _, signing_input = compose_unsigned_index_jwt_for_aws_kms_sign(
+            image_descriptor, sign_cert_chain=cert_chain
+        )
+
+        # sign with a key that does NOT match the end-entity cert in the chain
+        wrong_key = ec.generate_private_key(ec.SECP256R1())
+        token = _simulate_kms_es256_sign(wrong_key, signing_input)
+
+        extracted_chain = get_index_jwt_sign_cert_chain(token)
+        with pytest.raises(InvalidSignatureError):
+            decode_index_jwt_with_verification(token, extracted_chain)
