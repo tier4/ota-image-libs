@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Any
 
 import jwt
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from .jwt_utils import (
     JWT_ALG_CURVE_MAPPING,
@@ -75,13 +76,11 @@ def compose_unsigned_jwt_for_aws_kms_sign(
     Raises:
         ValueError
     """
-    # drop the dummy signature, the leftover will become valid input
-    #   for actual JWT signing
     _aws_alg = get_aws_sign_alg(alg)
     _raw_payload = jwt.encode(
         payload=payload,
         headers=headers,
-        key="DUMMY_KEY",
+        key=ec.generate_private_key(JWT_ALG_CURVE_MAPPING[JWTAlgorithm(alg)]()),
         algorithm=alg,
     ).rsplit(".", 1)[0]
     return (_aws_alg, _raw_payload)
