@@ -22,6 +22,7 @@ from typing import Any
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric import ec
+from jwt.utils import base64url_encode
 
 from .jwt_utils import (
     JWT_ALG_CURVE_MAPPING,
@@ -111,4 +112,5 @@ def compose_jwt_from_aws_kms_sign_response(
     except KeyError as e:
         raise ValueError(f"unsupported or invalid algorithm: {e!r}") from None
 
-    return _jwt_payload + b"." + ec_sign_der_to_raw_signature(kms_sign_resp, _curve)
+    _raw_sig = ec_sign_der_to_raw_signature(kms_sign_resp, _curve)
+    return _jwt_payload + b"." + base64url_encode(_raw_sig)
