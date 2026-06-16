@@ -13,7 +13,7 @@
 # limitations under the License.
 """Common shared utils and libs for parsing and generating OTA images metadata."""
 
-from ._common import tmp_fname
+from ._common import StrEnum, tmp_fname
 from .metafile_base import MetaFileBase, MetaFileDescriptor
 from .model_fields import ConstFieldWithAltMeta
 from .model_spec import (
@@ -35,4 +35,5 @@ __all__ = [
     "Sha256Digest",
     "ConstFieldWithAltMeta",
     "tmp_fname",
+    "StrEnum",
 ]

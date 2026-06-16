@@ -24,15 +24,16 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric import ec
 from jwt.utils import base64url_encode
 
+from ota_image_libs.common import StrEnum
+
 from .jwt_utils import (
     JWT_ALG_CURVE_MAPPING,
     JWTAlgorithm,
-    _StrEnum,
     ec_sign_der_to_raw_signature,
 )
 
 
-class AWSKMSignAlgorithm(_StrEnum):
+class AWSKMSignAlgorithm(StrEnum):
     ECDSA_SHA_256 = "ECDSA_SHA_256"
     ECDSA_SHA_384 = "ECDSA_SHA_384"
     ECDSA_SHA_512 = "ECDSA_SHA_512"

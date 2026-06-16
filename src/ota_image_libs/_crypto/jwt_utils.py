@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
 import jwt
@@ -26,16 +25,10 @@ from cryptography.hazmat.primitives.asymmetric.ec import (
 )
 from jwt.utils import der_to_raw_signature
 
-
-class _StrEnum(str, Enum):
-    def __str__(self) -> str:
-        """
-        NOTE: mimic the new StrEnum's behavior.
-        """
-        return self.value
+from ota_image_libs.common import StrEnum
 
 
-class JWTAlgorithm(_StrEnum):
+class JWTAlgorithm(StrEnum):
     ES256 = "ES256"
     ES384 = "ES384"
     ES512 = "ES512"

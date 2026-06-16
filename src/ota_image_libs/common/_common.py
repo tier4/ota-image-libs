@@ -15,11 +15,28 @@
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any
 
 from pydantic import ValidationInfo
 
 DEFAULT_TMP_FNAME_PREFIX = "tmp"
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        """
+        NOTE: mimic the new StrEnum's behavior.
+        """
+
+        def __str__(self) -> str:
+            return self.value
+
+        def __format__(self, format_spec: str) -> str:
+            return str.__format__(self, format_spec)
 
 
 def tmp_fname(
