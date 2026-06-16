@@ -14,28 +14,41 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
 
 import jwt
-from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurve
+from cryptography.hazmat.primitives.asymmetric.ec import (
+    SECP256R1,
+    SECP384R1,
+    SECP521R1,
+    EllipticCurve,
+)
 from jwt.utils import der_to_raw_signature
 
-JWT_ALG_AWS_ALG_MAPPING = {
-    # JWT alg: AWS sign algorithm
-    "ES256": "ECDSA_SHA_256",
-    "ES384": "ECDSA_SHA_384",
-    "ES512": "ECDSA_SHA_512",
+
+class _StrEnum(str, Enum):
+    def __str__(self) -> str:
+        """
+        NOTE: mimic the new StrEnum's behavior.
+        """
+        return self.value
+
+
+class JWTAlgorithm(_StrEnum):
+    ES256 = "ES256"
+    ES384 = "ES384"
+    ES512 = "ES512"
+
+
+JWT_ALG_CURVE_MAPPING = {
+    JWTAlgorithm.ES256: SECP256R1,
+    JWTAlgorithm.ES384: SECP384R1,
+    JWTAlgorithm.ES512: SECP521R1,
 }
-"""Mapping between JWT ES* series algorithm to AWS KMS signing algorithm set.
-
-Also see https://docs.aws.amazon.com/kms/latest/APIReference/API_Sign.html#API_Sign_RequestSyntax
-and https://datatracker.ietf.org/doc/html/rfc7518#section-3.4.
-"""
-
-AWS_ALG_JWT_ALG_MAPPING = {v: k for k, v in JWT_ALG_AWS_ALG_MAPPING.items()}
 
 
-def ec_sign_der_to_raw_signature(der_sig: bytes, ec_curve: EllipticCurve):
+def ec_sign_der_to_raw_signature(der_sig: bytes, ec_curve: EllipticCurve) -> bytes:
     """Util to convert a DER-format ECDSA sign to JWT signature format.
 
     JWT expects the signature to be in "raw" format, see https://datatracker.ietf.org/doc/html/rfc7518#section-3.4.
@@ -43,13 +56,6 @@ def ec_sign_der_to_raw_signature(der_sig: bytes, ec_curve: EllipticCurve):
     See https://docs.aws.amazon.com/kms/latest/APIReference/API_Sign.html#API_Sign_ResponseSyntax.
     """
     return der_to_raw_signature(der_sig, ec_curve)
-
-
-def get_aws_sign_alg(jwt_sign_alg: str) -> str:
-    try:
-        return JWT_ALG_AWS_ALG_MAPPING[jwt_sign_alg]
-    except KeyError:
-        raise ValueError(f"unsupported {jwt_sign_alg=}") from None
 
 
 def compose_jwt(
@@ -82,12 +88,10 @@ def get_verified_jwt_payload(
     )
 
 
-def get_unverified_jwt_headers(
-    token: str,
-) -> dict[str, Any]:
+def get_unverified_jwt_headers(token: str) -> dict[str, Any]:
     """Parse the input JWT and return its headers.
 
     This is for caller get the x5c header, perform the sign cert verification,
         and then use verified sign cert's pubkey to verify the JWS signature.
     """
-    return jwt.get_unverified_header(token)
+    return jwt.get_unverified_header(token)  # noqa
