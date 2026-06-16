@@ -197,9 +197,9 @@ class TestComposeJwtFromAwsKmsSignResponse:
             b"header.payload", kms_sign_resp=der_sig, kms_sign_algorithm=aws_alg
         )
 
-        assert isinstance(token, bytes)
-        assert token.count(b".") == 2
-        sig_seg = token.rsplit(b".", 1)[1]
+        assert isinstance(token, str)
+        assert token.count(".") == 2
+        sig_seg = token.rsplit(".", 1)[1].encode()
         # must be valid (padding-less) base64url, i.e. no raw binary leaked through
         assert sig_seg == base64.urlsafe_b64encode(_b64url_decode(sig_seg)).rstrip(b"=")
         # decoded signature is the fixed-length raw r||s form JWS expects
@@ -263,9 +263,7 @@ class TestAwsKmsSigningRoundTrip:
         assert jwt.decode(token, key=pub_pem, algorithms=[jwt_alg]) == payload
         # 4b. verifiable through the library's own verification helper
         assert (
-            get_verified_jwt_payload(
-                token.decode(), pub_key=pub_pem, allowed_algs=[jwt_alg]
-            )
+            get_verified_jwt_payload(token, pub_key=pub_pem, allowed_algs=[jwt_alg])
             == payload
         )
 
@@ -292,9 +290,11 @@ class TestAwsKmsSigningRoundTrip:
         )
 
         # flip the payload segment to a different (validly-encoded) value
-        header_seg, _, sig_seg = token.split(b".")
-        forged_payload = base64.urlsafe_b64encode(b'{"sub": "evil"}').rstrip(b"=")
-        forged = header_seg + b"." + forged_payload + b"." + sig_seg
+        header_seg, _, sig_seg = token.split(".")
+        forged_payload = (
+            base64.urlsafe_b64encode(b'{"sub": "evil"}').rstrip(b"=").decode("ascii")
+        )
+        forged = header_seg + "." + forged_payload + "." + sig_seg
 
         with pytest.raises(InvalidSignatureError):
             jwt.decode(forged, key=pub_pem, algorithms=["ES256"])
@@ -364,7 +364,7 @@ class TestAwsKmsSigningWithIndexJwtReadPath:
             signing_input.encode(),
             kms_sign_resp=base64.b64decode(kms_resp["Signature"]),
             kms_sign_algorithm=kms_resp["SigningAlgorithm"],
-        ).decode()
+        )
 
         # the existing read path extracts the x5c chain and verifies the signature
         extracted_chain = get_index_jwt_sign_cert_chain(token)

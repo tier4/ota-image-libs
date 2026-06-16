@@ -41,7 +41,7 @@ class JWTAlgorithm(_StrEnum):
     ES512 = "ES512"
 
 
-JWT_ALG_CURVE_MAPPING = {
+JWT_ALG_CURVE_MAPPING: dict[JWTAlgorithm, type[EllipticCurve]] = {
     JWTAlgorithm.ES256: SECP256R1,
     JWTAlgorithm.ES384: SECP384R1,
     JWTAlgorithm.ES512: SECP521R1,

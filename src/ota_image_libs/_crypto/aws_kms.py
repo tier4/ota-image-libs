@@ -96,7 +96,7 @@ def compose_unsigned_jwt_for_aws_kms_sign(
 
 def compose_jwt_from_aws_kms_sign_response(
     _jwt_payload: bytes, *, kms_sign_resp: bytes, kms_sign_algorithm: str
-) -> bytes:
+) -> str:
     """Compose the complete JWT from JWT payload and AWS KMS signing resp.
 
     Caller needs to encode the payload and signature beforehand.
@@ -119,5 +119,5 @@ def compose_jwt_from_aws_kms_sign_response(
     except KeyError as e:
         raise ValueError(f"unsupported or invalid algorithm: {e!r}") from None
 
-    _raw_sig = ec_sign_der_to_raw_signature(kms_sign_resp, _curve)
-    return _jwt_payload + b"." + base64url_encode(_raw_sig)
+    _raw_sig = ec_sign_der_to_raw_signature(kms_sign_resp, _curve())
+    return (_jwt_payload + b"." + base64url_encode(_raw_sig)).decode("ascii")
