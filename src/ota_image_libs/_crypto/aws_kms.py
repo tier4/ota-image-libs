@@ -13,7 +13,7 @@
 # limitations under the License.
 """Support for using AWS KMS to sign the OTA image JWT.
 
-Only support algorithm that supports by the `jwt_utils` module, which is ES* series.
+Only support algorithm that supported by the `jwt_utils` module, which are ES* series.
 """
 
 from __future__ import annotations
