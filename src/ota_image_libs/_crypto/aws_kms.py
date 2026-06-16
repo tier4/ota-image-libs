@@ -55,9 +55,7 @@ AWS_ALG_JWT_ALG_MAPPING = {v: k for k, v in JWT_ALG_AWS_ALG_MAPPING.items()}
 def get_aws_sign_alg(jwt_sign_alg: str) -> AWSKMSignAlgorithm:
     try:
         return JWT_ALG_AWS_ALG_MAPPING[JWTAlgorithm(jwt_sign_alg)]
-    except ValueError:
-        raise ValueError(f"unsupported or unknown {jwt_sign_alg=}") from None
-    except KeyError:
+    except (ValueError, KeyError):
         raise ValueError(f"unsupported or unknown {jwt_sign_alg=}") from None
 
 
@@ -111,13 +109,9 @@ def compose_jwt_from_aws_kms_sign_response(
     """
     try:
         _kms_sign_alg = AWSKMSignAlgorithm(kms_sign_algorithm)
-    except ValueError:
-        raise ValueError(f"unsupported or invalid {kms_sign_algorithm=}") from None
-
-    try:
         _curve = JWT_ALG_CURVE_MAPPING[AWS_ALG_JWT_ALG_MAPPING[_kms_sign_alg]]
-    except KeyError as e:
-        raise ValueError(f"unsupported or invalid algorithm: {e!r}") from None
+    except (ValueError, KeyError):
+        raise ValueError(f"unsupported or invalid {kms_sign_algorithm=}") from None
 
     _raw_sig = ec_sign_der_to_raw_signature(kms_sign_resp, _curve())
     return (_jwt_payload + b"." + base64url_encode(_raw_sig)).decode("ascii")
