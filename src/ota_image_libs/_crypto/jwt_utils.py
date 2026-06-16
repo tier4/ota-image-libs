@@ -17,6 +17,38 @@ from __future__ import annotations
 from typing import Any
 
 import jwt
+from cryptography.hazmat.primitives.asymmetric.ec import (
+    SECP256R1,
+    SECP384R1,
+    SECP521R1,
+    EllipticCurve,
+)
+from jwt.utils import der_to_raw_signature
+
+from ota_image_libs.common import StrEnum
+
+
+class JWTAlgorithm(StrEnum):
+    ES256 = "ES256"
+    ES384 = "ES384"
+    ES512 = "ES512"
+
+
+JWT_ALG_CURVE_MAPPING: dict[JWTAlgorithm, type[EllipticCurve]] = {
+    JWTAlgorithm.ES256: SECP256R1,
+    JWTAlgorithm.ES384: SECP384R1,
+    JWTAlgorithm.ES512: SECP521R1,
+}
+
+
+def ec_sign_der_to_raw_signature(der_sig: bytes, ec_curve: EllipticCurve) -> bytes:
+    """Util to convert a DER-format ECDSA sign to JWT signature format.
+
+    JWT expects the signature to be in "raw" format, see https://datatracker.ietf.org/doc/html/rfc7518#section-3.4.
+    ECDSA signing request response from AWS KMS sign is in DER format, so this convert is required.
+    See https://docs.aws.amazon.com/kms/latest/APIReference/API_Sign.html#API_Sign_ResponseSyntax.
+    """
+    return der_to_raw_signature(der_sig, ec_curve)
 
 
 def compose_jwt(
@@ -49,12 +81,10 @@ def get_verified_jwt_payload(
     )
 
 
-def get_unverified_jwt_headers(
-    token: str,
-) -> dict[str, Any]:
+def get_unverified_jwt_headers(token: str) -> dict[str, Any]:
     """Parse the input JWT and return its headers.
 
     This is for caller get the x5c header, perform the sign cert verification,
         and then use verified sign cert's pubkey to verify the JWS signature.
     """
-    return jwt.get_unverified_header(token)
+    return jwt.get_unverified_header(token)  # noqa: S5659

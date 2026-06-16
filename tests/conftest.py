@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -28,6 +29,7 @@ from cryptography.hazmat.primitives.asymmetric.ec import (
     EllipticCurvePrivateKey,
     EllipticCurvePublicKey,
 )
+from cryptography.hazmat.primitives.hashes import HashAlgorithm
 from cryptography.x509 import Certificate
 from cryptography.x509.oid import NameOID
 
@@ -58,6 +60,63 @@ def ecdsa_keypair() -> tuple[EllipticCurvePrivateKey, EllipticCurvePublicKey]:
     private_key = ec.generate_private_key(ec.SECP256R1())
     public_key = private_key.public_key()
     return private_key, public_key
+
+
+#
+# ------------ Shared JWT / AWS KMS signing test helpers ------------ #
+#
+# A representative KMS key ARN; only its shape matters for these tests.
+FAKE_KMS_KEY_ID = (
+    "arn:aws:kms:us-east-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+)
+
+
+def b64url_decode(segment: str | bytes) -> bytes:
+    """base64url-decode a JWS segment, restoring the stripped padding."""
+    raw = segment.encode("ascii") if isinstance(segment, str) else segment
+    raw += b"=" * (-len(raw) % 4)
+    return base64.urlsafe_b64decode(raw)
+
+
+def ecdsa_der_sign(
+    priv_key: EllipticCurvePrivateKey, message: bytes, digest: HashAlgorithm
+) -> bytes:
+    """Produce a DER-encoded ECDSA signature over ``message``.
+
+    AWS KMS `Sign` with `MessageType=RAW` hashes the message with the signing
+    algorithm's digest and returns the signature DER-encoded (ANSI X9.62-2005 /
+    RFC 3279 section 2.2.3); cryptography's ``sign(msg, ECDSA(hash))`` does the
+    same, so it stands in for the KMS crypto here.
+    """
+    return priv_key.sign(message, ec.ECDSA(digest))
+
+
+def simulate_kms_sign_response(
+    priv_key: EllipticCurvePrivateKey,
+    message: bytes,
+    *,
+    digest: HashAlgorithm,
+    signing_algorithm: str,
+    key_id: str = FAKE_KMS_KEY_ID,
+) -> dict[str, str]:
+    """Build a self-generated AWS KMS `Sign` response (no live AWS needed).
+
+    Mirrors the documented response syntax::
+
+        {"KeyId": str, "Signature": blob, "SigningAlgorithm": str}
+
+    On the JSON/HTTP wire the `Signature` blob is standard-base64 encoded (boto3
+    hands it back already decoded to ``bytes``); we model the wire form here so
+    the test exercises the same decode a real caller must perform.
+
+    See https://docs.aws.amazon.com/kms/latest/APIReference/API_Sign.html#API_Sign_ResponseSyntax
+    """
+    der_sig = ecdsa_der_sign(priv_key, message, digest)
+    return {
+        "KeyId": key_id,
+        "Signature": base64.b64encode(der_sig).decode("ascii"),
+        "SigningAlgorithm": signing_algorithm,
+    }
 
 
 @pytest.fixture(scope="session")

@@ -28,6 +28,10 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key,
 )
 
+from ota_image_libs._crypto.aws_kms import (
+    AWSKMSSignAlgorithm,
+    compose_unsigned_jwt_for_aws_kms_sign,
+)
 from ota_image_libs._crypto.jwt_utils import (
     compose_jwt,
     get_unverified_jwt_headers,
@@ -86,6 +90,43 @@ def compose_index_jwt(
             encryption_algorithm=NoEncryption(),
         ),
         alg=ALLOWED_JWT_ALG,
+    )
+
+
+def compose_unsigned_index_jwt_for_aws_kms_sign(
+    index_descriptor: ImageIndex.Descriptor, *, sign_cert_chain: X5cX509CertChain
+) -> tuple[AWSKMSSignAlgorithm, str]:
+    """
+    Same as `compose_index_jwt`, but return a raw non-signed index.jwt.
+
+    To simplify the implementation and avoid rebuilding the wheel, the JWT is
+    created with pyJWT using a throwaway key, and the signature is then stripped
+    away to get the raw `header.payload` part.
+
+    Args:
+        index_descriptor (ImageIndex.Descriptor): The descriptor of the
+            index.json to be signed.
+        sign_cert_chain (X5cX509CertChain): The certificate chain used for
+            signing, embedded into the JWT header as the `x5c` field.
+
+    Raises:
+        ValueError: If the configured JWT algorithm has no corresponding AWS KMS
+            signing algorithm.
+
+    Returns:
+        tuple[AWSKMSSignAlgorithm, str]: A two-tuple of the AWS KMS signing
+            algorithm to pass to the KMS `Sign` API, and the unsigned signing
+            input (`header.payload`) to be signed.
+    """
+    jwt_alg = ALLOWED_JWT_ALG
+    claims_dict = IndexJWTClaims(
+        iat=int(time.time()),
+        image_index=index_descriptor,
+    ).model_dump(by_alias=True, exclude_none=True)
+    extra_headers = {X5C_FNAME: sign_cert_chain.serializer()}
+
+    return compose_unsigned_jwt_for_aws_kms_sign(
+        payload=claims_dict, headers=extra_headers, alg=jwt_alg
     )
 
 
