@@ -21,10 +21,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.ec import (
-    EllipticCurve,
-    EllipticCurvePrivateKey,
-)
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurve
 from cryptography.hazmat.primitives.hashes import HashAlgorithm
 from jwt.exceptions import InvalidSignatureError
 
@@ -37,6 +34,11 @@ from ota_image_libs._crypto.aws_kms import (
     get_aws_sign_alg,
 )
 from ota_image_libs._crypto.jwt_utils import JWTAlgorithm, get_verified_jwt_payload
+from tests.conftest import (
+    b64url_decode,
+    ecdsa_der_sign,
+    simulate_kms_sign_response,
+)
 
 # (jwt_alg, aws_alg, curve, hash, raw r||s signature length in bytes)
 # raw length is 2 * ceil(key_size / 8): P-256 -> 64, P-384 -> 96, P-521 -> 132.
@@ -45,59 +47,6 @@ ES_CURVE_CASES = [
     ("ES384", "ECDSA_SHA_384", ec.SECP384R1, hashes.SHA384, 96),
     ("ES512", "ECDSA_SHA_512", ec.SECP521R1, hashes.SHA512, 132),
 ]
-
-
-def _b64url_decode(segment: bytes) -> bytes:
-    """base64url-decode a JWS segment, restoring the stripped padding."""
-    pad = b"=" * (-len(segment) % 4)
-    return base64.urlsafe_b64decode(segment + pad)
-
-
-# A representative KMS key ARN; only its shape matters for these tests.
-_FAKE_KEY_ID = (
-    "arn:aws:kms:us-east-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab"
-)
-
-
-def _ecdsa_der_sign(
-    priv_key: EllipticCurvePrivateKey, message: bytes, digest: HashAlgorithm
-) -> bytes:
-    """Produce a DER-encoded ECDSA signature over ``message``.
-
-    AWS KMS `Sign` with `MessageType=RAW` hashes the message with the signing
-    algorithm's digest and returns the signature DER-encoded (ANSI X9.62-2005 /
-    RFC 3279 section 2.2.3); cryptography's ``sign(msg, ECDSA(hash))`` does the
-    same, so it stands in for the KMS crypto here.
-    """
-    return priv_key.sign(message, ec.ECDSA(digest))
-
-
-def _simulate_kms_sign_response(
-    priv_key: EllipticCurvePrivateKey,
-    message: bytes,
-    *,
-    digest: HashAlgorithm,
-    signing_algorithm: str,
-    key_id: str = _FAKE_KEY_ID,
-) -> dict[str, str]:
-    """Build a self-generated AWS KMS `Sign` response (no live AWS needed).
-
-    Mirrors the documented response syntax::
-
-        {"KeyId": str, "Signature": blob, "SigningAlgorithm": str}
-
-    On the JSON/HTTP wire the `Signature` blob is standard-base64 encoded (boto3
-    hands it back already decoded to ``bytes``); we model the wire form here so
-    the test exercises the same decode a real caller must perform.
-
-    See https://docs.aws.amazon.com/kms/latest/APIReference/API_Sign.html#API_Sign_ResponseSyntax
-    """
-    der_sig = _ecdsa_der_sign(priv_key, message, digest)
-    return {
-        "KeyId": key_id,
-        "Signature": base64.b64encode(der_sig).decode("ascii"),
-        "SigningAlgorithm": signing_algorithm,
-    }
 
 
 #
@@ -155,7 +104,7 @@ class TestComposeUnsignedJwtForAwsKmsSign:
             {"sub": "img"}, {"kid": "key-1"}, alg="ES256"
         )
         header_seg = signing_input.split(".", 1)[0]
-        header = json.loads(_b64url_decode(header_seg.encode()))
+        header = json.loads(b64url_decode(header_seg.encode()))
         assert header["alg"] == "ES256"
         assert header["typ"] == "JWT"
         assert header["kid"] == "key-1"
@@ -164,7 +113,7 @@ class TestComposeUnsignedJwtForAwsKmsSign:
         payload = {"sub": "img", "iat": 123, "nested": {"a": 1}}
         _, signing_input = compose_unsigned_jwt_for_aws_kms_sign(payload, alg="ES256")
         payload_seg = signing_input.split(".")[1]
-        assert json.loads(_b64url_decode(payload_seg.encode())) == payload
+        assert json.loads(b64url_decode(payload_seg.encode())) == payload
 
     def test_works_without_extra_headers(self):
         aws_alg, signing_input = compose_unsigned_jwt_for_aws_kms_sign(
@@ -191,7 +140,7 @@ class TestComposeJwtFromAwsKmsSignResponse:
     ):
         """The third segment must be base64url(raw r||s), not raw DER bytes."""
         priv = ec.generate_private_key(curve())
-        der_sig = _ecdsa_der_sign(priv, b"header.payload", digest())
+        der_sig = ecdsa_der_sign(priv, b"header.payload", digest())
 
         token = compose_jwt_from_aws_kms_sign_response(
             "header.payload", kms_sign_resp=der_sig, kms_sign_algorithm=aws_alg
@@ -201,9 +150,9 @@ class TestComposeJwtFromAwsKmsSignResponse:
         assert token.count(".") == 2
         sig_seg = token.rsplit(".", 1)[1].encode()
         # must be valid (padding-less) base64url, i.e. no raw binary leaked through
-        assert sig_seg == base64.urlsafe_b64encode(_b64url_decode(sig_seg)).rstrip(b"=")
+        assert sig_seg == base64.urlsafe_b64encode(b64url_decode(sig_seg)).rstrip(b"=")
         # decoded signature is the fixed-length raw r||s form JWS expects
-        assert len(_b64url_decode(sig_seg)) == raw_len
+        assert len(b64url_decode(sig_seg)) == raw_len
 
     @pytest.mark.parametrize("bad_alg", ["ECDSA_SHA_128", "RS256", "", "garbage"])
     def test_rejects_unsupported_kms_algorithm(self, bad_alg: str):
@@ -241,7 +190,7 @@ class TestAwsKmsSigningRoundTrip:
         assert str(composed_aws_alg) == aws_alg
 
         # 2. AWS KMS Sign: self-generate a response shaped like the real API
-        kms_resp = _simulate_kms_sign_response(
+        kms_resp = simulate_kms_sign_response(
             priv,
             signing_input.encode(),
             digest=digest(),
@@ -277,7 +226,7 @@ class TestAwsKmsSigningRoundTrip:
         _, signing_input = compose_unsigned_jwt_for_aws_kms_sign(
             {"sub": "img"}, {"typ": "JWT"}, alg="ES256"
         )
-        kms_resp = _simulate_kms_sign_response(
+        kms_resp = simulate_kms_sign_response(
             priv,
             signing_input.encode(),
             digest=hashes.SHA256(),
@@ -313,7 +262,7 @@ class TestAwsKmsSigningRoundTrip:
         _, signing_input = compose_unsigned_jwt_for_aws_kms_sign(
             {"sub": "img"}, {"typ": "JWT"}, alg="ES256"
         )
-        kms_resp = _simulate_kms_sign_response(
+        kms_resp = simulate_kms_sign_response(
             priv,
             signing_input.encode(),
             digest=hashes.SHA256(),
@@ -354,7 +303,7 @@ class TestAwsKmsSigningWithIndexJwtReadPath:
             headers,
             alg="ES256",
         )
-        kms_resp = _simulate_kms_sign_response(
+        kms_resp = simulate_kms_sign_response(
             ee_key,
             signing_input.encode(),
             digest=hashes.SHA256(),

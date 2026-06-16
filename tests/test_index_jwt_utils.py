@@ -50,13 +50,7 @@ from ota_image_libs.v1.index_jwt.utils import (
     decode_index_jwt_with_verification,
     get_index_jwt_sign_cert_chain,
 )
-
-
-def _b64url_decode(segment: str) -> bytes:
-    """base64url-decode a JWS segment, restoring the stripped padding."""
-    raw = segment.encode("ascii")
-    raw += b"=" * (-len(raw) % 4)
-    return base64.urlsafe_b64decode(raw)
+from tests.conftest import b64url_decode, ecdsa_der_sign
 
 
 def _simulate_kms_es256_sign(
@@ -65,12 +59,11 @@ def _simulate_kms_es256_sign(
     """Stand in for an AWS KMS ``ECDSA_SHA_256`` ``Sign`` round-trip.
 
     KMS signs the ``header.payload`` input and returns a DER-encoded ECDSA
-    signature; ``priv_key.sign(..., ec.ECDSA(SHA256))`` produces the same DER
-    form, which we feed back through the library's response composer (along with
-    the original signing input str) to get the complete JWT a caller would
-    obtain after calling KMS.
+    signature; ``ecdsa_der_sign`` produces the same DER form, which we feed back
+    through the library's response composer (along with the original signing
+    input str) to get the complete JWT a caller would obtain after calling KMS.
     """
-    der_sig = priv_key.sign(signing_input.encode("ascii"), ec.ECDSA(hashes.SHA256()))
+    der_sig = ecdsa_der_sign(priv_key, signing_input.encode("ascii"), hashes.SHA256())
     return compose_jwt_from_aws_kms_sign_response(
         signing_input,
         kms_sign_resp=der_sig,
@@ -488,7 +481,7 @@ class TestComposeUnsignedIndexJwtForAwsKmsSign:
             image_descriptor, sign_cert_chain=cert_chain
         )
 
-        header = json.loads(_b64url_decode(signing_input.split(".", 1)[0]))
+        header = json.loads(b64url_decode(signing_input.split(".", 1)[0]))
         assert header["alg"] == ALLOWED_JWT_ALG
         assert header["typ"] == "JWT"
         # x5c carries the base64-DER serialized signing cert chain (RFC 7515)
@@ -504,7 +497,7 @@ class TestComposeUnsignedIndexJwtForAwsKmsSign:
         )
         after = int(datetime.now(timezone.utc).timestamp())
 
-        payload = json.loads(_b64url_decode(signing_input.split(".")[1]))
+        payload = json.loads(b64url_decode(signing_input.split(".")[1]))
 
         assert isinstance(payload["iat"], int)
         assert before <= payload["iat"] <= after
@@ -526,7 +519,7 @@ class TestComposeUnsignedIndexJwtForAwsKmsSign:
         )
 
         mock_cert_chain.serializer.assert_called_once_with()
-        header = json.loads(_b64url_decode(signing_input.split(".", 1)[0]))
+        header = json.loads(b64url_decode(signing_input.split(".", 1)[0]))
         assert header[X5C_FNAME] == ["cert-a", "cert-b"]
 
 
