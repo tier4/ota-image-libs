@@ -95,17 +95,22 @@ def compose_unsigned_jwt_for_aws_kms_sign(
 def compose_jwt_from_aws_kms_sign_response(
     _jwt_payload: bytes, *, kms_sign_resp: bytes, kms_sign_algorithm: str
 ) -> str:
-    """Compose the complete JWT from JWT payload and AWS KMS signing resp.
+    """Compose the complete signed JWT from the signing input and a KMS Sign response.
 
-    Caller needs to encode the payload and signature beforehand.
-    For the signature part, the caller needs to extract the signature from the
-      full AWS KMS signing response JSON object, and then do BASE64_URL decode to
-      get the raw DER format signature.
+    Args:
+        _jwt_payload: the JWT signing input (``header.payload``) as bytes.
+        kms_sign_resp: the raw DER-encoded ECDSA signature taken from the KMS
+            ``Sign`` response's ``Signature`` field.
+        kms_sign_algorithm: the response's ``SigningAlgorithm`` (e.g. ``ECDSA_SHA_256``).
 
-    NOTE: we don't do verification over the resp and payload to
-          check whether the signing response is actually for the
-          jwt_payload, we have no way to know that anyway(we don't
-          know the private key).
+    Returns:
+        The complete JWT ``header.payload.signature`` as a str.
+
+    Raises:
+        ValueError: if ``kms_sign_algorithm`` is unsupported or invalid.
+
+    NOTE: we don't verify that the signing response actually corresponds to the
+        given jwt_payload - we can't, as we don't have the private key.
     """
     try:
         _kms_sign_alg = AWSKMSignAlgorithm(kms_sign_algorithm)
