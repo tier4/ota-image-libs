@@ -94,4 +94,4 @@ def get_unverified_jwt_headers(token: str) -> dict[str, Any]:
     This is for caller get the x5c header, perform the sign cert verification,
         and then use verified sign cert's pubkey to verify the JWS signature.
     """
-    return jwt.get_unverified_header(token)  # noqa
+    return jwt.get_unverified_header(token)  # noqa: S5659

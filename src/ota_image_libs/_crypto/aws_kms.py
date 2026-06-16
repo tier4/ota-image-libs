@@ -74,6 +74,13 @@ def compose_unsigned_jwt_for_aws_kms_sign(
     we use pyJWT's infra to create an JWT and then strip away the signature
     to get the raw headers+payload.
 
+    NOTE: the returned signing input is meant to be passed to KMS `Sign` as the
+        `Message`. With `MessageType=RAW`, KMS caps `Message` at 4096 bytes; an
+        embedded `x5c` cert chain can push the input past that for long chains.
+        If so, the caller should hash the signing input with the algorithm's
+        digest (SHA-256/384/512) and call `Sign` with `MessageType=DIGEST`.
+        See https://docs.aws.amazon.com/kms/latest/APIReference/API_Sign.html#API_Sign_RequestSyntax.
+
     Raises:
         ValueError
     """
