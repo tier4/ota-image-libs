@@ -94,12 +94,15 @@ def compose_unsigned_jwt_for_aws_kms_sign(
 
 
 def compose_jwt_from_aws_kms_sign_response(
-    _jwt_payload: bytes, *, kms_sign_resp: bytes, kms_sign_algorithm: str
+    _jwt_payload: str, *, kms_sign_resp: bytes, kms_sign_algorithm: str
 ) -> str:
     """Compose the complete signed JWT from the signing input and a KMS Sign response.
 
+    The caller should provide the exact same `_jwt_payload` previously retrieved from
+    `compose_unsigned_jwt_for_aws_kms_sign`.
+
     Args:
-        _jwt_payload: the JWT signing input (``header.payload``) as bytes.
+        _jwt_payload: the JWT signing input in base64_url encoded JWT format(``header.payload``).
         kms_sign_resp: the raw DER-encoded ECDSA signature taken from the KMS
             ``Sign`` response's ``Signature`` field.
         kms_sign_algorithm: the response's ``SigningAlgorithm`` (e.g. ``ECDSA_SHA_256``).
@@ -120,4 +123,6 @@ def compose_jwt_from_aws_kms_sign_response(
         raise ValueError(f"unsupported or invalid {kms_sign_algorithm=}") from None
 
     _raw_sig = ec_sign_der_to_raw_signature(kms_sign_resp, _curve())
-    return (_jwt_payload + b"." + base64url_encode(_raw_sig)).decode("ascii")
+    return (_jwt_payload.encode("ascii") + b"." + base64url_encode(_raw_sig)).decode(
+        "ascii"
+    )
