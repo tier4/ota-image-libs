@@ -31,7 +31,7 @@ from jwt.exceptions import InvalidSignatureError
 from ota_image_libs._crypto.aws_kms import (
     AWS_ALG_JWT_ALG_MAPPING,
     JWT_ALG_AWS_ALG_MAPPING,
-    AWSKMSignAlgorithm,
+    AWSKMSSignAlgorithm,
     compose_jwt_from_aws_kms_sign_response,
     compose_unsigned_jwt_for_aws_kms_sign,
     get_aws_sign_alg,
@@ -110,7 +110,7 @@ class TestGetAwsSignAlg:
     )
     def test_maps_each_es_alg(self, jwt_alg: str, expected_aws_alg: str):
         result = get_aws_sign_alg(jwt_alg)
-        assert isinstance(result, AWSKMSignAlgorithm)
+        assert isinstance(result, AWSKMSSignAlgorithm)
         assert str(result) == expected_aws_alg
 
     @pytest.mark.parametrize("bad_alg", ["RS256", "HS256", "ES128", "", "garbage"])
@@ -144,7 +144,7 @@ class TestComposeUnsignedJwtForAwsKmsSign:
         aws_alg, signing_input = compose_unsigned_jwt_for_aws_kms_sign(
             {"sub": "img"}, {"typ": "JWT"}, alg=jwt_alg
         )
-        assert isinstance(aws_alg, AWSKMSignAlgorithm)
+        assert isinstance(aws_alg, AWSKMSSignAlgorithm)
         assert str(aws_alg) == expected_aws_alg
         # only header + payload, no signature segment yet
         assert isinstance(signing_input, str)

@@ -33,16 +33,16 @@ from .jwt_utils import (
 )
 
 
-class AWSKMSignAlgorithm(StrEnum):
+class AWSKMSSignAlgorithm(StrEnum):
     ECDSA_SHA_256 = "ECDSA_SHA_256"
     ECDSA_SHA_384 = "ECDSA_SHA_384"
     ECDSA_SHA_512 = "ECDSA_SHA_512"
 
 
 JWT_ALG_AWS_ALG_MAPPING = {
-    JWTAlgorithm.ES256: AWSKMSignAlgorithm.ECDSA_SHA_256,
-    JWTAlgorithm.ES384: AWSKMSignAlgorithm.ECDSA_SHA_384,
-    JWTAlgorithm.ES512: AWSKMSignAlgorithm.ECDSA_SHA_512,
+    JWTAlgorithm.ES256: AWSKMSSignAlgorithm.ECDSA_SHA_256,
+    JWTAlgorithm.ES384: AWSKMSSignAlgorithm.ECDSA_SHA_384,
+    JWTAlgorithm.ES512: AWSKMSSignAlgorithm.ECDSA_SHA_512,
 }
 """Mapping between JWT ES* series algorithm to AWS KMS signing algorithm set.
 
@@ -53,7 +53,7 @@ and https://datatracker.ietf.org/doc/html/rfc7518#section-3.4.
 AWS_ALG_JWT_ALG_MAPPING = {v: k for k, v in JWT_ALG_AWS_ALG_MAPPING.items()}
 
 
-def get_aws_sign_alg(jwt_sign_alg: str) -> AWSKMSignAlgorithm:
+def get_aws_sign_alg(jwt_sign_alg: str) -> AWSKMSSignAlgorithm:
     try:
         return JWT_ALG_AWS_ALG_MAPPING[JWTAlgorithm(jwt_sign_alg)]
     except (ValueError, KeyError):
@@ -65,7 +65,7 @@ def compose_unsigned_jwt_for_aws_kms_sign(
     headers: dict[str, Any] | None = None,
     *,
     alg: str,
-) -> tuple[AWSKMSignAlgorithm, str]:
+) -> tuple[AWSKMSSignAlgorithm, str]:
     """Compose a JWT with only header and payload parts,
     ready for signing with AWS KMS sign API.
 
@@ -114,7 +114,7 @@ def compose_jwt_from_aws_kms_sign_response(
         given jwt_payload - we can't, as we don't have the private key.
     """
     try:
-        _kms_sign_alg = AWSKMSignAlgorithm(kms_sign_algorithm)
+        _kms_sign_alg = AWSKMSSignAlgorithm(kms_sign_algorithm)
         _curve = JWT_ALG_CURVE_MAPPING[AWS_ALG_JWT_ALG_MAPPING[_kms_sign_alg]]
     except (ValueError, KeyError):
         raise ValueError(f"unsupported or invalid {kms_sign_algorithm=}") from None
