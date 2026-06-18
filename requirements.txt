@@ -8,11 +8,15 @@ cffi==1.17.1 ; python_full_version < '3.9'
     #   zstandard
 cffi==2.0.0 ; python_full_version >= '3.9' and platform_python_implementation != 'PyPy'
     # via cryptography
-cryptography==46.0.7
+cryptography==47.0.0 ; python_full_version <= '3.9'
+    # via ota-image-libs
+cryptography==48.0.1 ; python_full_version > '3.9'
     # via ota-image-libs
 msgpack==1.1.1 ; python_full_version < '3.9'
     # via ota-image-libs
-msgpack==1.1.2 ; python_full_version >= '3.9'
+msgpack==1.1.2 ; python_full_version == '3.9.*'
+    # via ota-image-libs
+msgpack==1.2.0 ; python_full_version >= '3.10'
     # via ota-image-libs
 pycparser==2.23 ; (python_full_version < '3.9' and implementation_name == 'PyPy') or (python_full_version < '3.10' and implementation_name != 'PyPy' and platform_python_implementation != 'PyPy') or (python_full_version < '3.9' and platform_python_implementation == 'PyPy')
     # via cffi
