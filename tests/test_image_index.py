@@ -19,7 +19,7 @@ import json
 import pytest
 
 from ota_image_libs.v1.consts import IMAGE_INDEX_FNAME, RESOURCE_DIR
-from ota_image_libs.v1.image_index.schema import ImageIndex
+from ota_image_libs.v1.image_index.schema import ImageIndex, UnknownManifestDescriptor
 from ota_image_libs.v1.image_index.utils import ImageIndexHelper
 
 
@@ -155,3 +155,52 @@ class TestImageIndexIntegration:
         assert "annotations" in parsed_back
         assert parsed_back["annotations"][BUILD_TOOL_VERSION] == "test-1.0.0"
         assert parsed_back["annotations"][OTA_IMAGE_CREATED_AT] == 1704067200
+
+
+UNKNOWN_ENTRY = {
+    "mediaType": "application/vnd.example.future-payload.v9+json",
+    "artifactType": "application/vnd.example.future-payload.v9",
+    "digest": "sha256:" + "0" * 64,
+    "size": 1234,
+    "futureField": {"nested": True},
+}
+
+
+def _index_json_with(entries):
+    return json.dumps(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": entries,
+            "annotations": {"vnd.tier4.ota.ota-image-builder.version": "test-1.0.0"},
+        }
+    )
+
+
+class TestUnknownManifestTolerance:
+    def test_unknown_media_type_entry_parses(self):
+        index = ImageIndex.parse_metafile(_index_json_with([UNKNOWN_ENTRY]))
+        entry = index.manifests[0]
+        assert isinstance(entry, UnknownManifestDescriptor)
+        assert entry.mediaType == UNKNOWN_ENTRY["mediaType"]
+
+    def test_unknown_entry_round_trips(self):
+        index = ImageIndex.parse_metafile(_index_json_with([UNKNOWN_ENTRY]))
+        exported = json.loads(index.export_metafile())["manifests"][0]
+        assert exported["mediaType"] == UNKNOWN_ENTRY["mediaType"]
+        assert exported["artifactType"] == UNKNOWN_ENTRY["artifactType"]
+        assert exported["futureField"] == {"nested": True}
+
+    def test_unknown_entries_invisible_to_helpers(self):
+        index = ImageIndex.parse_metafile(_index_json_with([UNKNOWN_ENTRY]))
+        assert index.image_identifiers == []
+        assert index.image_resource_table is None
+
+    def test_known_entry_still_wins_over_fallback(self, extracted_ota_image):
+        # Round-trip the real fixture image's index: every entry must classify
+        # as a KNOWN descriptor type, none as UnknownManifestDescriptor.
+        index_f = extracted_ota_image / "index.json"
+        index = ImageIndex.parse_metafile(index_f.read_text())
+        assert not any(
+            isinstance(m, UnknownManifestDescriptor) for m in index.manifests
+        )
