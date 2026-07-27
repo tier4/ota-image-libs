@@ -21,6 +21,7 @@ import pytest
 from ota_image_libs.v1.consts import IMAGE_INDEX_FNAME, RESOURCE_DIR
 from ota_image_libs.v1.image_index.schema import ImageIndex, UnknownManifestDescriptor
 from ota_image_libs.v1.image_index.utils import ImageIndexHelper
+from ota_image_libs.v1.image_manifest.schema import ImageManifest
 
 
 @pytest.fixture
@@ -204,3 +205,36 @@ class TestUnknownManifestTolerance:
         assert not any(
             isinstance(m, UnknownManifestDescriptor) for m in index.manifests
         )
+
+    def test_unknown_artifact_type_falls_to_unknown_descriptor(self):
+        entry = {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "artifactType": "application/vnd.tier4.SOMETHING-NEW.v9",
+            "digest": "sha256:" + "1" * 64,
+            "size": 99,
+        }
+        index = ImageIndex.parse_metafile(_index_json_with([entry]))
+        assert isinstance(index.manifests[0], UnknownManifestDescriptor)
+        # regression: this used to misclassify as ImageManifest.Descriptor,
+        # REWRITE artifactType on export, and crash image_identifiers
+        assert index.image_identifiers is None or index.image_identifiers == []
+        exported = json.loads(index.export_metafile())["manifests"][0]
+        assert exported["artifactType"] == entry["artifactType"]
+
+    def test_entry_without_artifact_type_still_classifies_known(
+        self, extracted_ota_image
+    ):
+        # producers that omit artifactType must keep classifying as before
+        index_f = extracted_ota_image / "index.json"
+        raw_manifests = json.loads(index_f.read_text())["manifests"]
+        entry = dict(
+            next(
+                m
+                for m in raw_manifests
+                if m["mediaType"] == "application/vnd.oci.image.manifest.v1+json"
+            )
+        )
+        del entry["artifactType"]
+
+        index = ImageIndex.parse_metafile(_index_json_with([entry]))
+        assert isinstance(index.manifests[0], ImageManifest.Descriptor)
