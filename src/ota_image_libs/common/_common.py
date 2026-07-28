@@ -61,6 +61,10 @@ def oci_descriptor_before_validator(cls: Any, data: Any, info: ValidationInfo) -
             _schema_ver_checker.validate(data.get("schemaVersion"))
         if _media_type_checker := cls.__dict__.get("MediaType"):
             _media_type_checker.validate(data.get("mediaType"))
+        if (_artifact_type_checker := cls.__dict__.get("ArtifactType")) and (
+            "artifactType" in data
+        ):
+            _artifact_type_checker.validate(data.get("artifactType"))
     return data
 
 

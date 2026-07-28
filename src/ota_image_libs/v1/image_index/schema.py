@@ -15,9 +15,10 @@
 from __future__ import annotations
 
 import time
-from typing import List, Union
+from typing import Any, List, Union
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
+from typing_extensions import Annotated
 
 from ota_image_libs.common import (
     AliasEnabledModel,
@@ -25,6 +26,7 @@ from ota_image_libs.common import (
     MetaFileBase,
     MetaFileDescriptor,
     SchemaVersion,
+    Sha256Digest,
 )
 from ota_image_libs.v1.annotation_keys import (
     BUILD_TOOL_VERSION,
@@ -52,6 +54,21 @@ from ota_image_libs.v1.resource_table.schema import (
     ResourceTableDescriptor,
     ZstdCompressedResourceTableDescriptor,
 )
+
+
+class UnknownManifestDescriptor(BaseModel):
+    """Catch-all for index.json manifest entries this library version does not
+    recognize (forward compatibility). Any well-formed OCI descriptor —
+    mediaType + digest + size — parses; every field is preserved on re-export.
+    Unknown entries are deliberately invisible to the typed helpers below."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    mediaType: str
+    artifactType: Union[str, None] = None
+    size: int
+    digest: Sha256Digest
+    annotations: Any = None
 
 
 class ImageIndex(MetaFileBase):
@@ -88,11 +105,15 @@ class ImageIndex(MetaFileBase):
     MediaType = MediaType[IMAGE_INDEX]
 
     manifests: List[
-        Union[
-            ImageManifest.Descriptor,
-            OTAClientPackageManifest.Descriptor,
-            ResourceTableDescriptor,
-            ZstdCompressedResourceTableDescriptor,
+        Annotated[
+            Union[
+                ImageManifest.Descriptor,
+                OTAClientPackageManifest.Descriptor,
+                ResourceTableDescriptor,
+                ZstdCompressedResourceTableDescriptor,
+                UnknownManifestDescriptor,
+            ],
+            Field(union_mode="left_to_right"),
         ]
     ]
     annotations: Annotations
