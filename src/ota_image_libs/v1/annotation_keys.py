@@ -48,6 +48,26 @@ OTA_IMAGE_BLOBS_COUNT = "vnd.tier4.ota.image.blobs-count"
 OTA_IMAGE_BLOBS_SIZE = "vnd.tier4.ota.image.blobs-size"
 
 #
+# ------ partition-based OTA image related ------ #
+#
+PARTITION_IMAGE_FILESYSTEM = "vnd.tier4.ota.partition-image.filesystem"
+PARTITION_IMAGE_VERITY_ROOT_HASH = "vnd.tier4.ota.partition-image.verity.root-hash"
+PARTITION_IMAGE_VERITY_HASH_OFFSET = "vnd.tier4.ota.partition-image.verity.hash-offset"
+PARTITION_IMAGE_UNCOMPRESSED_DIGEST = (
+    "vnd.tier4.ota.partition-image.uncompressed.digest"
+)
+PARTITION_IMAGE_UNCOMPRESSED_SIZE = "vnd.tier4.ota.partition-image.uncompressed.size"
+PARTITION_IMAGE_DELTA_ALGORITHM = "vnd.tier4.ota.partition-image.delta.algorithm"
+PARTITION_IMAGE_DELTA_SOURCE_DIGEST = (
+    "vnd.tier4.ota.partition-image.delta.source-digest"
+)
+PARTITION_IMAGE_DELTA_SOURCE_SIZE = "vnd.tier4.ota.partition-image.delta.source-size"
+PARTITION_IMAGE_VENDOR_PACKAGE_FORMAT = (
+    "vnd.tier4.ota.partition-image.vendor-package.format"
+)
+PARTITION_IMAGE_FIRMWARE_FORMAT = "vnd.tier4.ota.partition-image.firmware.format"
+
+#
 # ------ special hardware related ------ #
 #
 NVIDIA_JETSON_BSP_VER = "vnd.nvidia.jetson.bsp_ver"
@@ -64,3 +84,10 @@ SYS_IMAGE_DIRS_COUNT = "vnd.tier4.image.rootfs.dirs-count"
 SYS_IMAGE_UNIQUE_FILES_COUNT = "vnd.tier4.image.rootfs.unique-files-entries-count"
 SYS_IMAGE_UNIQUE_FILES_SIZE = "vnd.tier4.image.rootfs.unique-files-entries-size"
 SYS_IMAGE_SIZE = "vnd.tier4.image.rootfs.size"
+
+#
+# ------ update agent release package ------ #
+#
+UPDATE_AGENT_TYPE = "vnd.tier4.ota.update-agent.type"
+UPDATE_AGENT_VERSION = "vnd.tier4.ota.update-agent.version"
+UPDATE_AGENT_ARCH = "vnd.tier4.ota.update-agent.architecture"

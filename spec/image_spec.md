@@ -2,8 +2,8 @@
 
 ## Overview
 
-An OTA image of specification version 1 is a unique representation of an input system rootfs image.
-It is designed for file-based OTA updates, where each file in the rootfs is individually tracked and deduplicated.
+An OTA image of specification version 1 is a unique representation of an input system image.
+An OTA image carries file-based payloads, where each file of a rootfs is tracked and deduplicated, and [partition-based payloads](partition_image.md), where whole partition images are; both share the index and the signing.
 
 An OTA image consists of the following components:
 
@@ -14,7 +14,9 @@ An OTA image consists of the following components:
   Each image manifest represents a single ECU's OTA payload and follows the OCI image manifest specification.
   An image manifest is uniquely identified by its `ecu_id` and `ota_release_key`.
 
-- **[Image Config](image_config.md)** — Configuration metadata for an image payload, including architecture, OS information, system config reference, and statistics about the original rootfs.
+- **[Image Config](image_config.md)** — Configuration metadata for a file-based image payload, including architecture, OS information, system config reference, and statistics about the original rootfs.
+
+- **[Partition Image Payload](partition_image.md)** — An image payload made of whole partition images (or one vendor package) with a per-partition-role action list, for read-only, integrity-protected roots.
 
 - **[Sys Config](sys_config.md)** — System-level configuration for the target device, including hostname, mount points, swap, sysctl settings, and OTAClient configuration.
 

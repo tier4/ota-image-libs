@@ -20,8 +20,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
+from ota_image_libs.v1.image_index.schema import (
+    IMAGE_PAYLOAD_DESCRIPTORS,
+    ImagePayloadDescriptor,
+)
 from ota_image_libs.v1.image_index.utils import ImageIndexHelper
-from ota_image_libs.v1.image_manifest.schema import ImageManifest
+from ota_image_libs.v1.partition_image.schema import PartitionImageManifest
 from ota_image_libs.v1.utils import check_if_valid_ota_image
 from ota_image_tools._utils import exit_with_err_msg
 
@@ -48,7 +52,7 @@ def list_image_cmd_args(
     list_image_arg_parser.set_defaults(handler=list_image_cmd)
 
 
-def _list_image_from_folder(image_root: Path) -> list[ImageManifest.Descriptor]:
+def _list_image_from_folder(image_root: Path) -> list[ImagePayloadDescriptor]:
     if not check_if_valid_ota_image(image_root):
         exit_with_err_msg(f"{image_root} doesn't hold a valid OTA image.")
     _index_helper = ImageIndexHelper(image_root)
@@ -56,11 +60,11 @@ def _list_image_from_folder(image_root: Path) -> list[ImageManifest.Descriptor]:
     return [
         _d
         for _d in _index_helper.image_index.manifests
-        if isinstance(_d, ImageManifest.Descriptor)
+        if isinstance(_d, IMAGE_PAYLOAD_DESCRIPTORS)
     ]
 
 
-def _list_image_from_artifact(image_artifact: Path) -> list[ImageManifest.Descriptor]:
+def _list_image_from_artifact(image_artifact: Path) -> list[ImagePayloadDescriptor]:
     with OTAImageArtifactReader(image_artifact) as artifact_reader:
         if not artifact_reader.is_valid_image():
             exit_with_err_msg(f"{image_artifact} is not a valid OTA image artifact!")
@@ -68,28 +72,35 @@ def _list_image_from_artifact(image_artifact: Path) -> list[ImageManifest.Descri
         return [
             _d
             for _d in artifact_reader.parse_index().manifests
-            if isinstance(_d, ImageManifest.Descriptor)
+            if isinstance(_d, IMAGE_PAYLOAD_DESCRIPTORS)
         ]
 
 
 _DIV = "-" * 18
 
 
-def _render_output(_in: list[ImageManifest.Descriptor]) -> str:
+def _payload_kind(_entry: ImagePayloadDescriptor) -> str:
+    if isinstance(_entry, PartitionImageManifest.Descriptor):
+        return "partition-based"
+    return "file-based"
+
+
+def _render_output(_in: list[ImagePayloadDescriptor]) -> str:
     _buffer = StringIO()
 
     _title = f"{_DIV} OTA image payloads {_DIV}\n"
     _buffer.write(_title)
     for idx, _entry in enumerate(_in):
+        kind = _payload_kind(_entry)
         if (_annon := _entry.annotations) is None:
-            _buffer.write(f"{idx=} (no annotations available)\n")
+            _buffer.write(f"{idx=}\t{kind=} (no annotations available)\n")
             continue
 
         ecu_id, ota_release_key = (
             _annon.pilot_auto_platform_ecu,
             _annon.ota_release_key.value,
         )
-        _buffer.write(f"{idx=}\t{ecu_id=}\t{ota_release_key=}\n")
+        _buffer.write(f"{idx=}\t{ecu_id=}\t{ota_release_key=}\t{kind=}\n")
     _buffer.write("-" * len(_title))
     return _buffer.getvalue()
 

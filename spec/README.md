@@ -16,7 +16,8 @@ Following the OCI specification, OTA-specific artifacts and manifests have their
 | --- | --- |
 | [image_index.md](image_index.md) | Top-level OCI image index (`index.json`) |
 | [image_manifest.md](image_manifest.md) | Per-image payload manifest (OCI image manifest) |
-| [image_config.md](image_config.md) | Image configuration and rootfs statistics |
+| [image_config.md](image_config.md) | Image configuration and rootfs statistics (file-based payload) |
+| [partition_image.md](partition_image.md) | Partition-based payload: whole partition images or a vendor package, and its config |
 | [sys_config.md](sys_config.md) | System-level configuration (hostname, mounts, swap, etc.) |
 | [file_table.md](file_table.md) | SQLite3 database schema for filesystem metadata |
 | [resource_table.md](resource_table.md) | SQLite3 database schema for blob storage manifest |

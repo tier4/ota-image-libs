@@ -48,9 +48,20 @@ from ota_image_libs.v1.annotation_keys import (
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, ImageManifest
 from ota_image_libs.v1.media_types import IMAGE_INDEX
 from ota_image_libs.v1.otaclient_package.schema import OTAClientPackageManifest
+from ota_image_libs.v1.partition_image.schema import PartitionImageManifest
 from ota_image_libs.v1.resource_table.schema import (
     ResourceTableDescriptor,
     ZstdCompressedResourceTableDescriptor,
+)
+from ota_image_libs.v1.update_agent_package.schema import UpdateAgentPackageManifest
+
+# The two kinds of OTA image payload an index can list; the tuple is for isinstance.
+ImagePayloadDescriptor = Union[
+    ImageManifest.Descriptor, PartitionImageManifest.Descriptor
+]
+IMAGE_PAYLOAD_DESCRIPTORS = (
+    ImageManifest.Descriptor,
+    PartitionImageManifest.Descriptor,
 )
 
 
@@ -90,7 +101,9 @@ class ImageIndex(MetaFileBase):
     manifests: List[
         Union[
             ImageManifest.Descriptor,
+            PartitionImageManifest.Descriptor,
             OTAClientPackageManifest.Descriptor,
+            UpdateAgentPackageManifest.Descriptor,
             ResourceTableDescriptor,
             ZstdCompressedResourceTableDescriptor,
         ]
@@ -144,17 +157,31 @@ class ImageIndex(MetaFileBase):
         return [
             _manifest.image_identifier
             for _manifest in self.manifests
-            if isinstance(_manifest, ImageManifest.Descriptor)
+            if isinstance(_manifest, IMAGE_PAYLOAD_DESCRIPTORS)
         ]
 
-    def find_image(self, _id: ImageIdentifier) -> ImageManifest.Descriptor | None:
-        """Find one image from the manifests list."""
+    def find_image_payload(self, _id: ImageIdentifier) -> ImagePayloadDescriptor | None:
+        """Find one image payload, of either kind, from the manifests list."""
         for _entry in self.manifests:
             if (
-                isinstance(_entry, ImageManifest.Descriptor)
+                isinstance(_entry, IMAGE_PAYLOAD_DESCRIPTORS)
                 and _entry.image_identifier == _id
             ):
                 return _entry
+
+    def find_image(self, _id: ImageIdentifier) -> ImageManifest.Descriptor | None:
+        """Find one file-based image payload from the manifests list."""
+        _entry = self.find_image_payload(_id)
+        if isinstance(_entry, ImageManifest.Descriptor):
+            return _entry
+
+    def find_partition_image(
+        self, _id: ImageIdentifier
+    ) -> PartitionImageManifest.Descriptor | None:
+        """Find one partition-based image payload from the manifests list."""
+        _entry = self.find_image_payload(_id)
+        if isinstance(_entry, PartitionImageManifest.Descriptor):
+            return _entry
 
     def find_otaclient_package(self) -> list[OTAClientPackageManifest.Descriptor]:
         """Find all OTAClientPackage manifests from the manifests list."""
@@ -163,6 +190,15 @@ class ImageIndex(MetaFileBase):
             for _entry in self.manifests
             if isinstance(_entry, OTAClientPackageManifest.Descriptor)
         ]
+
+    def find_update_agent_package(
+        self,
+    ) -> UpdateAgentPackageManifest.Descriptor | None:
+        """The update agent release package, if this image carries one."""
+        for _entry in self.manifests:
+            if isinstance(_entry, UpdateAgentPackageManifest.Descriptor):
+                return _entry
+        return None
 
     def finalize_image(self, total_blobs_count: int, total_blobs_size: int) -> None:
         """Label the OTA image as finalized by setting the `created_at` annotation.
@@ -189,13 +225,13 @@ class ImageIndex(MetaFileBase):
             raise ValueError("Image is already signed. Use force_sign to override.")
         self.annotations.signed_at = int(time.time())
 
-    def add_image(self, manifest_descriptor: ImageManifest.Descriptor) -> None:
-        """Add a manifest of an image payload into the image index."""
+    def add_image(self, manifest_descriptor: ImagePayloadDescriptor) -> None:
+        """Add a manifest of an image payload, of either kind, into the image index."""
         if self.image_finalized or self.image_signed:
             raise ValueError("Cannot add manifest to a finalized image.")
 
         _image_id = manifest_descriptor.image_identifier
-        if self.find_image(_image_id) is not None:
+        if self.find_image_payload(_image_id) is not None:
             raise ValueError(
                 f"image with {_image_id=} has already been added to the image, abort"
             )
@@ -205,6 +241,21 @@ class ImageIndex(MetaFileBase):
         self, manifest_descriptor: OTAClientPackageManifest.Descriptor
     ) -> None:
         """Add OTAClientPackage manifest into the image index."""
+        self.manifests.append(manifest_descriptor)
+
+    def add_update_agent_package(
+        self, manifest_descriptor: UpdateAgentPackageManifest.Descriptor
+    ) -> None:
+        """Add the update agent release package into the image index.
+
+        One entry carries every agent the image ships, so a second one is refused.
+        """
+        if self.image_finalized or self.image_signed:
+            raise ValueError("Cannot add manifest to a finalized image.")
+        if self.find_update_agent_package() is not None:
+            raise ValueError(
+                "an update agent release package has already been added to the image"
+            )
         self.manifests.append(manifest_descriptor)
 
     def update_resource_table(
