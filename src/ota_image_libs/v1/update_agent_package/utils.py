@@ -10,12 +10,6 @@ from ota_image_libs.v1.annotation_keys import (
     UPDATE_AGENT_TYPE,
     UPDATE_AGENT_VERSION,
 )
-from ota_image_libs.v1.media_types import UPDATE_AGENT_TYPE_OTACLIENT
-from ota_image_libs.v1.otaclient_package.schema import (
-    SQUASHFS,
-    OTAClientOriginManifest,
-)
-from ota_image_libs.v1.otaclient_package.utils import MANIFEST_JSON
 from ota_image_libs.v1.update_agent_package.schema import (
     UpdateAgentBundleDescriptor,
     UpdateAgentPackageManifest,
@@ -46,27 +40,3 @@ def add_update_agent_package(
     return UpdateAgentPackageManifest.Descriptor.export_metafile_to_resource_dir(
         UpdateAgentPackageManifest(layers=_layers), resource_dir
     )
-
-
-def bundles_from_otaclient_release(
-    release_dir: Path,
-) -> list[Tuple[Path, str, str, str]]:
-    """The squashfs images an otaclient release directory holds, as bundles.
-
-    Its manifest.json is read for what is in the directory and then left behind: the
-    entry says everything a consumer needs on each bundle itself, so there is nothing
-    for a second metadata file to add.
-    """
-    _manifest = OTAClientOriginManifest.model_validate_json(
-        (release_dir / MANIFEST_JSON).read_text()
-    )
-    return [
-        (
-            release_dir / _p.filename,
-            UPDATE_AGENT_TYPE_OTACLIENT,
-            _p.version,
-            _p.architecture,
-        )
-        for _p in _manifest.packages
-        if _p.type == SQUASHFS
-    ]
