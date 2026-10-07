@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, NamedTuple, Union
+from typing import TYPE_CHECKING, Any, Generic, List, NamedTuple, Union
 
 from pydantic import Field
 
@@ -27,6 +27,7 @@ from ota_image_libs.common import (
     MetaFileDescriptor,
     SchemaVersion,
 )
+from ota_image_libs.common.metafile_base import MetaFile_T
 from ota_image_libs.common.model_spec import ArtifactType
 from ota_image_libs.v1 import OTA_IMAGE_MEDIA_TYPE
 from ota_image_libs.v1.annotation_keys import (
@@ -58,7 +59,7 @@ class OTAReleaseKey(str, Enum):
     prd = "prd"
 
 
-class _ImageIDMixin:
+class ImageIDMixin:
     if TYPE_CHECKING:
         annotations: Any
 
@@ -76,9 +77,36 @@ class _ImageIDMixin:
         return ImageIdentifier(self.ecu_id, self.ota_release_key)
 
 
+class PayloadManifestDescriptor(
+    ImageIDMixin, MetaFileDescriptor[MetaFile_T], Generic[MetaFile_T]
+):
+    """The index entry of an image payload, file-based or partition-based.
+
+    Its annotations identify the payload, so they are required.
+    """
+
+    @classmethod
+    def export_metafile_to_resource_dir(
+        cls,
+        meta_file: MetaFile_T,
+        resource_dir: Path,
+        *,
+        annotations: dict[str, Any] | None = None,
+    ):
+        if annotations is None:
+            raise ValueError(f"{cls.__name__} MUST have annotations assigned.")
+        _expected = cls.metafile_type()
+        assert isinstance(meta_file, _expected), (
+            f"`meta_file` MUST be instance of {_expected.__name__}"
+        )
+        return super().export_metafile_to_resource_dir(
+            meta_file, resource_dir, annotations=annotations
+        )
+
+
 # fmt: off
-class ImageManifest(_ImageIDMixin, MetaFileBase):
-    class Descriptor(_ImageIDMixin, MetaFileDescriptor["ImageManifest"]):
+class ImageManifest(ImageIDMixin, MetaFileBase):
+    class Descriptor(PayloadManifestDescriptor["ImageManifest"]):
         class Annotations(AliasEnabledModel):
             pilot_auto_platform_ecu: str = Field(alias=PLATFORM_ECU)
             ota_release_key: OTAReleaseKey = Field(alias=OTA_RELEASE_KEY, default=OTAReleaseKey.dev)
@@ -87,23 +115,6 @@ class ImageManifest(_ImageIDMixin, MetaFileBase):
         ArtifactType = ArtifactType[OTA_IMAGE_ARTIFACT]
 
         annotations: Union[Annotations, None] = None
-
-        @classmethod
-        def export_metafile_to_resource_dir(
-            cls,
-            meta_file: MetaFileBase,
-            resource_dir: Path,
-            *,
-            annotations: dict[str, Any] | None = None,
-        ):
-            """For ImageManifest descriptor, `annotations` is required."""
-            if annotations is None:
-                raise ValueError(f"{cls.__name__} MUST have annotations assigned.")
-            assert isinstance(meta_file, ImageManifest), f"`meta_file` MUST be instance of {ImageManifest.__name__}"
-
-            return super().export_metafile_to_resource_dir(
-                meta_file, resource_dir, annotations=annotations
-            )
 
     class Annotations(AliasEnabledModel):
         pilot_auto_platform_ecu: str = Field(alias=PLATFORM_ECU)

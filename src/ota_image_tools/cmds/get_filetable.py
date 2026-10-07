@@ -19,7 +19,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
-from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, OTAReleaseKey
+from ota_image_libs.v1.image_manifest.schema import (
+    ImageIdentifier,
+    ImageManifest,
+    OTAReleaseKey,
+)
 from ota_image_libs.v1.utils import check_if_valid_ota_image
 from ota_image_tools._utils import exit_with_err_msg
 from ota_image_tools.libs.common import (
@@ -32,6 +36,11 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+_NO_FILE_TABLE_MSG = (
+    "image payload {image_id} is a partition-based OTA image: it carries partition "
+    "images, not files, and has no file_table."
+)
 
 
 def get_filetable_cmd_args(
@@ -80,6 +89,8 @@ def _get_filetable_from_folder(
     _image_manifest_descriptor, _resource_dir = resolve_image_from_folder(
         image_root, image_id
     )
+    if not isinstance(_image_manifest_descriptor, ImageManifest.Descriptor):
+        exit_with_err_msg(_NO_FILE_TABLE_MSG.format(image_id=image_id))
 
     image_manifest = _image_manifest_descriptor.load_metafile_from_resource_dir(
         _resource_dir
@@ -96,6 +107,8 @@ def _get_filetable_from_artifact(
 ) -> None:
     with OTAImageArtifactReader(image_root) as artifact_reader:
         image_manifest = resolve_image_from_artifact(artifact_reader, image_id)
+        if not isinstance(image_manifest, ImageManifest):
+            exit_with_err_msg(_NO_FILE_TABLE_MSG.format(image_id=image_id))
         image_config, _ = artifact_reader.get_image_config(image_manifest)
         artifact_reader.get_file_table(image_config, output)
     logger.info(f"file_table saved to {output}")

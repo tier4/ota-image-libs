@@ -5,6 +5,7 @@ A Python library and CLI toolkit for creating, reading, verifying, and deploying
 ## Features
 
 - **OCI-compliant image specification** - Image index, manifest, and config schemas based on OCI standards
+- **Two payload kinds** - file-based (a rootfs, file by file, deduplicated) and partition-based (whole partition images or a vendor package, for read-only, integrity-protected roots)
 - **Cryptographic signing and verification** - ES256 JWT signatures with X.509 certificate chain validation
 - **Artifact packing and reading** - Reproducible ZIP-based artifact format with content-addressable blob storage
 - **Multi-threaded deployment** - Concurrent image payload extraction and rootfs deployment
@@ -97,7 +98,8 @@ The OTA image v1 specification is available in the [spec/](spec/) directory:
 | [image_spec.md](spec/image_spec.md) | Overall OTA image specification overview |
 | [image_index.md](spec/image_index.md) | OCI image index specification for OTA images |
 | [image_manifest.md](spec/image_manifest.md) | Per-image payload manifest |
-| [image_config.md](spec/image_config.md) | Per-image configuration schema |
+| [image_config.md](spec/image_config.md) | Per-image configuration schema (file-based payload) |
+| [partition_image.md](spec/partition_image.md) | Partition-based payload and its configuration |
 | [sys_config.md](spec/sys_config.md) | System-level configuration |
 | [file_table.md](spec/file_table.md) | SQLite database schema for filesystem metadata |
 | [resource_table.md](spec/resource_table.md) | SQLite database schema for blob storage manifest |
