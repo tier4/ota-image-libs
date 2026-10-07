@@ -170,9 +170,9 @@ An agent streams a partition image straight from the artifact onto the partition
   ],
   "data_images": [
     {
-      "name": "ml_package",
+      "name": "models",
       "version": "2026.9.1",
-      "mount": "/opt/autoware/ml",
+      "mount": "/opt/models",
       "requires": { "rootfs": { "min": "1.2.0", "max": "2.0.0" } },
       "image": {
         "mediaType": "application/vnd.tier4.ota.partition-based-ota-image.data-image.v1+zstd",

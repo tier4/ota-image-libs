@@ -452,9 +452,9 @@ class TestDataImages:
 
     def entry(self, resource_dir, **overrides):
         _kw = dict(
-            name="ml_package",
+            name="models",
             version="2026.9.1",
-            mount="/opt/autoware/ml",
+            mount="/opt/models",
             image=self.data_descriptor(resource_dir),
         )
         _kw.update(overrides)
@@ -564,10 +564,10 @@ class TestDataImages:
         assert config.payload_descriptors == [_e.image]
         parsed = PartitionImageConfig.parse_metafile(config.export_metafile())
         assert parsed == config
-        assert parsed.data_image("ml_package") is not None
+        assert parsed.data_image("models") is not None
         assert parsed.data_image("maps") is None
         _raw = json.loads(config.export_metafile())
-        assert _raw["data_images"][0]["mount"] == "/opt/autoware/ml"
+        assert _raw["data_images"][0]["mount"] == "/opt/models"
 
     def test_names_must_be_unique(self, resource_dir):
         rootfs_descriptor, boot_descriptor = make_blobs(resource_dir)
@@ -915,7 +915,7 @@ class TestFirmware:
     def firmware_descriptor(
         resource_dir, data: bytes = b"\xca\x05" * 2048, **annotations
     ):
-        _f = resource_dir / "TEGRA_BL.Cap"
+        _f = resource_dir / "firmware.pkg"
         _f.write_bytes(data)
         _a = {
             PARTITION_IMAGE_FIRMWARE_FORMAT: "example-updater.capsule.v1",
@@ -1099,7 +1099,7 @@ class TestFirmwareCompressed:
             FirmwarePackageZstdDescriptor,
         )
 
-        _f = resource_dir / "TEGRA_BL.Cap.zst"
+        _f = resource_dir / "firmware.pkg.zst"
         _f.write_bytes(b"\x28\xb5\x2f\xfd" + b"\x00" * 60)
         _d = FirmwarePackageZstdDescriptor.add_file_to_resource_dir(
             _f,
