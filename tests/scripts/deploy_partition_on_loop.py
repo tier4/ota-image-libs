@@ -92,7 +92,7 @@ def main() -> int:
     WORK.mkdir(exist_ok=True)
     tree = WORK / "tree"
     (tree / "etc").mkdir(parents=True, exist_ok=True)
-    (tree / "etc" / "esync-rootfs-version").write_text("9.9.9\n")
+    (tree / "etc" / "rootfs-version").write_text("9.9.9\n")
     (tree / "big").write_bytes(os.urandom(12 << 20))
 
     img = WORK / "rootfs.img"
