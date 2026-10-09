@@ -55,7 +55,12 @@ if sys.version_info >= (3, 11):
         _zipinfo = ZipInfo.from_file(filename=filename, arcname=str(arcname))
         _zipinfo.date_time = DEFAULT_TIMESTAMP
         _zipinfo.compress_type = zipf.compression
-        _zipinfo.compress_level = zipf.compresslevel
+        # ZipInfo uses __slots__: the level lives in `compress_level` from Python
+        # 3.13 and in `_compresslevel` before, and the other name cannot be set.
+        if hasattr(_zipinfo, "compress_level"):
+            _zipinfo.compress_level = zipf.compresslevel
+        else:
+            _zipinfo._compresslevel = zipf.compresslevel
         _zipinfo.external_attr |= FILE_PERMISSION << 16  # rw_r_r_
 
         with open(filename, "rb") as src, zipf.open(_zipinfo, "w") as dst:

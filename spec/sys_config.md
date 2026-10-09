@@ -6,6 +6,10 @@ It is optionally referenced by the [image_config](image_config.md).
 OTA client MAY only support a subset of the features described in the schema.
 For minimum requirement, `hostname` and `persist_files` SHOULD be supported.
 
+For a [partition-based payload](partition_image.md) the sys_config is informational.
+The root of such a device is read-only and integrity-protected, so nothing can be applied to it after the update; every item of the sys_config is consumed when the image is built.
+In particular `persist_files` is honoured by the image build, which places each listed path on a partition the update does not write and binds it over the image's path at boot; the update agent copies nothing.
+
 ## Media Type
 
 `application/vnd.tier4.ota.sys-config.v1+yaml`

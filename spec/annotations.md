@@ -107,6 +107,50 @@ Except for those explicitly stated, the optional annotations SHOULD be provided 
 
   OPTIONAL, recommended. The version of the operating system of the original system rootfs image. For `Ubuntu`, like `20.04`, `22.04`, etc.
 
+## Partition-based Payload Annotations
+
+Annotations on the blob descriptors of a [partition-based payload](partition_image.md).
+
+- **`vnd.tier4.ota.partition-image.filesystem`** *string*
+
+  OPTIONAL, on a partition image or data image blob. The filesystem the image carries, e.g. `ext4`, `squashfs`.
+
+- **`vnd.tier4.ota.partition-image.verity.root-hash`** *string*
+
+  OPTIONAL, on a partition image or data image blob whose image has a dm-verity hash tree appended. The root hash, hex; always together with the hash offset.
+
+- **`vnd.tier4.ota.partition-image.verity.hash-offset`** *int*
+
+  OPTIONAL, with the root hash. The byte offset of the hash tree within the image.
+
+- **`vnd.tier4.ota.partition-image.vendor-package.format`** *string*
+
+  OPTIONAL, on a vendor package blob. The name of the package format the platform's updater expects.
+
+- **`vnd.tier4.ota.partition-image.firmware.format`** *string*
+
+  REQUIRED on a firmware package blob. The name of the package format the platform's own firmware updater takes (e.g. a UEFI capsule format); an agent applies the formats its platform takes and refuses the rest.
+
+- **`vnd.tier4.ota.partition-image.uncompressed.digest`** *string*
+
+  REQUIRED on a blob whose media type ends in `+zstd` (a partition image, data image, firmware package or vendor package stored compressed). The `sha256:…` digest of what the blob decodes to, which is what the partition ends up holding; the descriptor's own `digest` is of the stored bytes.
+
+- **`vnd.tier4.ota.partition-image.uncompressed.size`** *int*
+
+  REQUIRED with the uncompressed digest. The size, in bytes, of what the blob decodes to.
+
+- **`vnd.tier4.ota.partition-image.delta.algorithm`** *string*
+
+  REQUIRED on a partition delta blob. How to apply it; `block-diff` is the one defined (see [Partition Delta](partition_image.md#partition-delta)).
+
+- **`vnd.tier4.ota.partition-image.delta.source-digest`** *string*
+
+  REQUIRED on a partition delta blob. The `sha256:…` digest of the bytes the delta applies to: on the device, the first `source-size` bytes of the committed slot's partition.
+
+- **`vnd.tier4.ota.partition-image.delta.source-size`** *int*
+
+  REQUIRED on a partition delta blob. How many bytes of the source the delta applies to.
+
 ## Internal Used Annotations
 
 The internal used annotations are annotations that are automatically populated by the OTA image builder.
