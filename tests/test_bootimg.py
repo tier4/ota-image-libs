@@ -42,6 +42,14 @@ def test_a_command_line_that_does_not_fit_is_refused():
         bootimg.pack(b"K", b"R", "x" * bootimg.CMDLINE_LEN)
 
 
+@pytest.mark.parametrize("cut", ["\0", "\n", "\t", "\x7f"])
+def test_a_command_line_with_control_characters_is_refused(cut):
+    """After a NUL nothing is booted: a `verityinfo=` there would pass a check that
+    reads the string and never reach the kernel."""
+    with pytest.raises(bootimg.BootImageError, match="control characters"):
+        bootimg.pack(b"K", b"R", f"root=/dev/mapper/vroot{cut} verityinfo=/dev/x:ab:1")
+
+
 def test_an_empty_kernel_or_ramdisk_is_refused():
     with pytest.raises(bootimg.BootImageError, match="no kernel"):
         bootimg.pack(b"", b"R", "a=b")

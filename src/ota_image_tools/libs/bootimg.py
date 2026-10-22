@@ -75,6 +75,13 @@ def pack(kernel: bytes, ramdisk: bytes, cmdline: str) -> bytes:
         raise BootImageError("the boot blob carries no kernel")
     if not ramdisk:
         raise BootImageError("the boot blob carries no initramfs")
+    bad = sorted({c for c in cmdline if ord(c) < 0x20 or ord(c) == 0x7F})
+    if bad:
+        # A NUL ends the field: what follows it would be checked here and not booted.
+        raise BootImageError(
+            f"the kernel command line carries control characters {bad!r}; the boot "
+            "image's field ends at the first NUL"
+        )
     encoded = cmdline.encode()
     if len(encoded) >= CMDLINE_LEN:
         raise BootImageError(
