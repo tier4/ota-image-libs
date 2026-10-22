@@ -66,6 +66,8 @@ Media type: `application/vnd.tier4.ota.partition-based-ota-image.config.v1+json`
     With media type `…partition.v1+zstd` the blob is stored [compressed](#compressed-blobs) and the annotations also carry what it decodes to.
   - the **boot files** (`…boot-files.v1.tar`): a tar of regular files, without directories, to be unpacked into the slot's boot directory.
     It carries the kernel, the initramfs and the boot loader fragment that names the root's verity root hash, which is why a `boot` role is always written together with its `rootfs`.
+    The kernel command line in it names the root as one argument, `verityinfo=<device>:<root-hash>:<hash-offset>`: exactly one such argument (the initramfs takes the last of several, and one checked before writing would not be the one booted), the root hash in hex as the rootfs image's `verity.root-hash` annotation has it, the hash offset in bytes, a positive decimal number, as its `verity.hash-offset`.
+    An agent MUST refuse a boot files tar whose `verityinfo=` is malformed, repeated, or names another root hash or offset than the rootfs image written beside it.
 - **`delta`** *[OCI descriptor](https://github.com/opencontainers/image-spec/blob/main/descriptor.md)* — OPTIONAL, media type `application/vnd.tier4.ota.partition-based-ota-image.partition-delta.v1.tar`; only with `action: write` performed by the agent, and only beside an `image`.
   It carries a [block diff](#partition-delta) that reconstructs `image` from bytes the device already has, so that a campaign transfers the change instead of the whole partition.
   REQUIRED annotations: `vnd.tier4.ota.partition-image.delta.algorithm` (how to apply it; `block-diff` is the one defined), `vnd.tier4.ota.partition-image.delta.source-digest` and `vnd.tier4.ota.partition-image.delta.source-size` (the bytes it applies to, named by digest because a digest identifies them exactly and a version string does not).
@@ -106,10 +108,11 @@ It is the block model platform updaters use for their own packages, so one pipel
 
 The blob is a **tar of two members, in this order**, so that it can be applied from a stream that cannot seek:
 
-- `ops.json` — `{"block_size": B, "target_size": T, "source_size": S, "ops": [...]}`, each op one of `["c", length, source_offset]` (copy from the source), `["z", length]` (zeros) or `["l", length]` (the next `length` literal bytes). Lengths sum to `target_size`; a copy stays inside `source_size`.
+- `ops.json` — `{"block_size": B, "target_size": T, "source_size": S, "ops": [...]}`, each op one of `["c", length, source_offset]` (copy from the source), `["z", length]` (zeros) or `["l", length]` (the next `length` literal bytes). `block_size` is `4096`. Lengths sum to `target_size`; every run but the last is a whole number of blocks, a copy starts on a block boundary and stays inside `source_size`.
+  There is thus at most one run per block of the target, and `ops.json` takes at most 64 bytes per block plus 4 KiB: a consumer MAY refuse a larger member before reading it.
 - `literals.zst` — the literal runs, in target order, as one zstd stream compressed with long-range matching over a window of at most 128 MiB (`--long=27`), which a plain `zstd -d` accepts without a flag. The window is what shrinks them: the literals of a rebuild are largely compressed data, which a wider window finds repeated and a higher level does not.
 
-Applying it reads the source at the offsets the runs name, decodes the literals as a stream and writes the result straight to the partition, hashing on the way: the source is never copied, and memory is bounded by the decoder's window.
+Applying it reads the source at the offsets the runs name, decodes the literals as a stream and writes the result straight to the partition, hashing on the way: the source is never copied, and memory is bounded by the decoder's window and the runs, which an image of many small changes makes many.
 The agent MUST check the ops against `source-size` and the image's size before writing, and MUST verify the reconstruction against `image`.
 
 Reference implementation: [`ota_image_tools/libs/block_diff.py`](../src/ota_image_tools/libs/block_diff.py).
@@ -118,7 +121,7 @@ Reference implementation: [`ota_image_tools/libs/block_diff.py`](../src/ota_imag
 
 A partition image, a data image, a firmware package or a vendor package MAY be stored zstd-compressed, with the media type suffixed `+zstd`.
 The descriptor's `digest` and `size` are then the stored bytes', as everywhere in OCI, and the annotations `vnd.tier4.ota.partition-image.uncompressed.digest` (`sha256:…`) and `vnd.tier4.ota.partition-image.uncompressed.size` are REQUIRED: they name what the partition ends up holding, which is what a reconstruction, a delta's `source-digest` and an installer's check refer to.
-A consumer decodes the blob as a stream on the way to the partition (or, for a vendor package, while staging it for the platform's updater) and MUST verify the decoded bytes against the annotations.
+A consumer decodes the blob as a stream on the way to the partition (or, for a vendor package, while staging it for the platform's updater) and MUST verify the decoded bytes against the annotations: they hash to `uncompressed.digest`, and the blob decodes to `uncompressed.size` bytes, not fewer and not more. A blob that is not a zstd stream is refused before it is decoded.
 
 The boot files tar and the delta are stored as they are (the delta compresses its own literals).
 

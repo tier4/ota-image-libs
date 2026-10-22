@@ -21,7 +21,7 @@ real tools. It needs loop devices, so it is not part of the suite.
 
     docker run --rm --privileged -v "$PWD/src:/libs:ro" -v "$PWD/tests/scripts:/t:ro" \
         ubuntu:24.04 sh -c 'apt-get update -qq &&
-            apt-get install -y -qq python3 e2fsprogs cryptsetup-bin zstd &&
+            apt-get install -y -qq python3 python3-zstandard e2fsprogs cryptsetup-bin zstd &&
             mkdir -p /work && PYTHONPATH=/libs python3 /t/deploy_partition_on_loop.py'
 """
 

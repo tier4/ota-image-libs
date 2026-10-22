@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import tarfile
 from pathlib import Path
 
@@ -221,6 +222,15 @@ def test_ops_round_trip_through_json():
         ),
         (lambda o: o.update(ops=[]), "not a non-empty list"),
         (lambda o: o.update(block_size=0), "block_size"),
+        (lambda o: o.update(block_size=512), "block_size is 512, not 4096"),
+        (
+            lambda o: o.update(ops=[[COPY, BS + 1, 0], [ZERO, BS - 1]]),
+            "op 0 is 4097 bytes, not whole blocks",
+        ),
+        (
+            lambda o: o.update(ops=[[COPY, BS, 1], [ZERO, BS]]),
+            "copies from 1, not a block boundary",
+        ),
         (
             lambda o: o.update(target_size=BS),
             "reconstructs 4096 bytes but the image is 8192",
@@ -241,6 +251,60 @@ def test_ops_that_cannot_be_what_they_say_are_refused(change, message):
     change(obj)
     with pytest.raises(BlockDiffError, match=message):
         Ops.from_json(json.dumps(obj).encode(), target_size=2 * BS, source_size=2 * BS)
+
+
+def test_only_the_last_run_may_end_in_a_partial_block():
+    obj = {
+        "block_size": BS,
+        "target_size": 2 * BS - 100,
+        "source_size": 2 * BS,
+        "ops": [[COPY, BS, 0], [ZERO, BS - 100]],
+    }
+    ops = Ops.from_json(json.dumps(obj).encode(), target_size=2 * BS - 100)
+    assert ops.ops == [Op(COPY, BS, 0), Op(ZERO, BS - 100)]
+
+
+def test_ops_json_larger_than_the_runs_of_the_image_take_is_not_read(monkeypatch):
+    """The bound is checked on the tar header, before a byte of the member is read."""
+    ops = Ops(BS, BS, BS, [Op(COPY, BS, 0)]).to_json()
+    padded = ops + b" " * block_diff.ops_json_limit(BS)
+    read = []
+    monkeypatch.setattr(
+        Ops, "from_json", classmethod(lambda cls, *a, **kw: read.append(a))
+    )
+    with pytest.raises(BlockDiffError, match="more than the runs of a 4096-byte image"):
+        with open_delta(
+            io.BytesIO(_tar([(OPS_MEMBER, padded), (LITERALS_MEMBER, b"")])),
+            target_size=BS,
+        ):
+            pass
+    assert read == []
+
+
+def test_a_source_that_cannot_be_read_is_a_delta_error(tmp_path):
+    fd = os.open(tmp_path, os.O_RDONLY)  # a directory: pread fails with EISDIR
+    try:
+        rec = block_diff.Reconstruction(
+            Ops(BS, BS, BS, [Op(COPY, BS, 0)]), fd, io.BytesIO()
+        )
+        with pytest.raises(BlockDiffError, match="cannot read the source at 0"):
+            rec.read(BS)
+    finally:
+        os.close(fd)
+
+
+def test_one_long_run_is_read_in_bounded_pieces(tmp_path, monkeypatch):
+    monkeypatch.setattr(block_diff, "_READ_SIZE", BS)
+    src = tmp_path / "src"
+    src.write_bytes(_image(1, 2, 3))
+    fd = os.open(src, os.O_RDONLY)
+    try:
+        rec = block_diff.Reconstruction(
+            Ops(BS, 3 * BS, 3 * BS, [Op(COPY, 3 * BS, 0)]), fd, io.BytesIO()
+        )
+        assert [len(rec.read(-1)) for _ in range(4)] == [BS, BS, BS, 0]
+    finally:
+        os.close(fd)
 
 
 def test_ops_that_are_not_json_are_refused():
@@ -418,10 +482,98 @@ def test_a_compressed_image_that_is_cut_short_is_refused(tmp_path):
     compressed = zstandard.compress(image)
     dst = tmp_path / "dst"
     dst.write_bytes(b"\0" * 4 * BS)
-    with pytest.raises(PartitionDeployError):
+    with pytest.raises(PartitionDeployError, match="zstd exited"):
         write_compressed_image(
             io.BytesIO(compressed[:-20]), len(image), dst, digest=_sha(image)
         )
+
+
+@zstd_needed
+def test_a_compressed_image_that_decodes_to_more_than_its_size_is_refused(tmp_path):
+    """A second frame after the image's: the bytes written check out, the blob does
+    not, and the excess is not read into memory to find that out."""
+    image = _image(1, 2, 3)
+    blob = zstandard.compress(image) + zstandard.compress(_image(4) * 64)
+    dst = tmp_path / "dst"
+    dst.write_bytes(b"\0" * 4 * BS)
+    with pytest.raises(
+        PartitionDeployError, match="more bytes than its descriptor says"
+    ):
+        write_compressed_image(io.BytesIO(blob), len(image), dst, digest=_sha(image))
+
+
+@zstd_needed
+def test_garbage_after_the_frame_is_refused_even_unchecked(tmp_path):
+    image = _image(1, 2, 3)
+    blob = zstandard.compress(image) + b"not a frame" * 100
+    dst = tmp_path / "dst"
+    dst.write_bytes(b"\0" * 4 * BS)
+    with pytest.raises(PartitionDeployError, match="zstd exited"):
+        write_compressed_image(io.BytesIO(blob), len(image), dst, digest=None)
+
+
+@zstd_needed
+def test_only_zstd_is_handed_to_the_decoder(tmp_path):
+    """`zstd -d` decodes gzip and xz as well: an unchecked blob of another format is
+    not given the chance."""
+    import gzip
+
+    image = _image(1)
+    dst = tmp_path / "dst"
+    dst.write_bytes(b"\0" * 2 * BS)
+    with pytest.raises(PartitionDeployError, match="not a zstd stream"):
+        write_compressed_image(
+            io.BytesIO(gzip.compress(image)), len(image), dst, digest=None
+        )
+
+
+class _FailingSource:
+    """Gives `good`, then fails as a pulled USB stick does."""
+
+    def __init__(self, good: bytes) -> None:
+        self._good = io.BytesIO(good)
+
+    def read(self, size: int = -1) -> bytes:
+        chunk = self._good.read(size)
+        if not chunk:
+            raise OSError(5, "Input/output error")
+        return chunk
+
+
+@zstd_needed
+def test_a_source_that_fails_is_reported_as_itself(tmp_path):
+    image = os.urandom(8 * BS)
+    compressed = zstandard.compress(image)
+    dst = tmp_path / "dst"
+    dst.write_bytes(b"\0" * 9 * BS)
+    with pytest.raises(PartitionDeployError, match="cannot read the compressed stream"):
+        write_compressed_image(
+            _FailingSource(compressed[: len(compressed) // 2]),
+            len(image),
+            dst,
+            digest=None,
+        )
+
+
+@zstd_needed
+def test_a_consumer_that_fails_mid_stream_raises_its_own_error(tmp_path, monkeypatch):
+    """The feeder is still writing when the consumer gives up: what the caller sees is
+    the consumer's error, not the broken pipe the decoder's exit leaves behind."""
+    image = os.urandom(256 * BS)  # incompressible: more than a pipe holds
+    compressed = zstandard.compress(image)
+    dst = tmp_path / "dst"
+    dst.write_bytes(b"\0" * 257 * BS)
+    real_open = os.open
+
+    def no_write(path, flags, *a, **kw):
+        if Path(path) == dst and flags & os.O_WRONLY:
+            raise PermissionError(13, "Permission denied")
+        return real_open(path, flags, *a, **kw)
+
+    monkeypatch.setattr(os, "open", no_write)
+    for _ in range(10):
+        with pytest.raises(PartitionDeployError, match="cannot open .* for writing"):
+            write_compressed_image(io.BytesIO(compressed), len(image), dst, digest=None)
 
 
 @zstd_needed
@@ -450,4 +602,4 @@ def test_without_zstd_the_applier_says_so(tmp_path, monkeypatch):
             target_digest="a" * 64,
         )
     with pytest.raises(PartitionDeployError, match="no zstd"):
-        write_compressed_image(io.BytesIO(b""), BS, tmp_path / "dst")
+        write_compressed_image(io.BytesIO(b""), BS, tmp_path / "dst", digest=None)

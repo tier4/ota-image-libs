@@ -34,12 +34,11 @@ import tarfile
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO, Iterator, List, Optional
-
-from typing_extensions import TypeGuard
+from typing import TYPE_CHECKING, BinaryIO, Iterator, List, NamedTuple, Optional
 
 if TYPE_CHECKING:
     import zstandard
+    from typing_extensions import TypeGuard
 
 OPS_MEMBER = "ops.json"
 LITERALS_MEMBER = "literals.zst"
@@ -54,15 +53,23 @@ ZERO = "z"
 _READ_SIZE = 64 * 1024 * 1024
 _HASH_SIZE = 16
 
+# What one run may take in `ops.json` as the encoder writes it, `["c",<length>,<offset>],`
+# with both numbers at most 20 digits, and the object around the runs: the bound
+# `ops.json` is held to before it is read.
+_OPS_JSON_PER_RUN = 64
+_OPS_JSON_HEAD = 4096
+
 
 class BlockDiffError(ValueError):
     """A delta that cannot be read, or cannot be what it says it is."""
 
 
-@dataclass(frozen=True)
-class Op:
+class Op(NamedTuple):
     """One run of the target: `length` bytes copied from the source at
-    `source_offset`, or zeros, or the next `length` literal bytes."""
+    `source_offset`, or zeros, or the next `length` literal bytes.
+
+    A tuple, not an object with a dict: a delta of a large, fragmented image holds
+    millions of them."""
 
     kind: str
     length: int
@@ -111,6 +118,10 @@ class Ops:
         if not isinstance(obj, dict):
             raise BlockDiffError(f"{OPS_MEMBER} is not an object")
         block_size = _positive_int(obj.get("block_size"), "block_size")
+        if block_size != BLOCK_SIZE:
+            raise BlockDiffError(
+                f"{OPS_MEMBER}: block_size is {block_size}, not {BLOCK_SIZE}"
+            )
         t_size = _positive_int(obj.get("target_size"), "target_size")
         s_size = obj.get("source_size")
         if not _is_int(s_size) or s_size < 0:
@@ -128,11 +139,17 @@ class Ops:
             raise BlockDiffError(f"{OPS_MEMBER}: ops is not a non-empty list")
         ops: List[Op] = []
         total = 0
+        last = len(raw) - 1
         for n, item in enumerate(raw):
             if not isinstance(item, list) or len(item) not in (2, 3):
                 raise BlockDiffError(f"{OPS_MEMBER}: op {n} is malformed: {item!r}")
             kind = item[0]
             length = _positive_int(item[1], f"op {n} length")
+            # Runs are whole blocks; only the last may end in the image's partial one.
+            if n != last and length % block_size:
+                raise BlockDiffError(
+                    f"{OPS_MEMBER}: op {n} is {length} bytes, not whole blocks"
+                )
             if kind == COPY:
                 if len(item) != 3:
                     raise BlockDiffError(f"{OPS_MEMBER}: op {n} copies from nowhere")
@@ -141,6 +158,10 @@ class Ops:
                     raise BlockDiffError(
                         f"{OPS_MEMBER}: op {n} copies {length} bytes from {offset!r}, "
                         f"outside the {s_size}-byte source"
+                    )
+                if offset % block_size:
+                    raise BlockDiffError(
+                        f"{OPS_MEMBER}: op {n} copies from {offset}, not a block boundary"
                     )
                 ops.append(Op(COPY, length, offset))
             elif kind in (LITERAL, ZERO):
@@ -358,6 +379,13 @@ def open_delta(
             ops_file = tar.extractfile(ops_member)
             if ops_file is None:
                 raise BlockDiffError(f"{OPS_MEMBER} is not a file")
+            if target_size is not None and ops_member.size > ops_json_limit(
+                target_size
+            ):
+                raise BlockDiffError(
+                    f"{OPS_MEMBER} is {ops_member.size} bytes, more than the runs of a "
+                    f"{target_size}-byte image take"
+                )
             ops = Ops.from_json(
                 ops_file.read(), target_size=target_size, source_size=source_size
             )
@@ -376,6 +404,12 @@ def open_delta(
     finally:
         with contextlib.suppress(tarfile.TarError):
             tar.close()
+
+
+def ops_json_limit(target_size: int) -> int:
+    """The most `ops.json` can take for an image of `target_size` bytes: one run per
+    block at most, since runs are whole blocks."""
+    return _OPS_JSON_HEAD + -(-target_size // BLOCK_SIZE) * _OPS_JSON_PER_RUN
 
 
 class Reconstruction(io.RawIOBase):
@@ -401,9 +435,15 @@ class Reconstruction(io.RawIOBase):
                 self._i += 1
                 self._pos = 0
                 continue
-            take = left if size < 0 else min(size, left)
+            # One unchanged region is one run, often of gigabytes: a read is bounded
+            # whatever the caller asks for.
+            take = min(left, _READ_SIZE) if size < 0 else min(size, left, _READ_SIZE)
             if op.kind == COPY:
-                data = os.pread(self._fd, take, op.source_offset + self._pos)
+                at = op.source_offset + self._pos
+                try:
+                    data = os.pread(self._fd, take, at)
+                except OSError as e:
+                    raise BlockDiffError(f"cannot read the source at {at}: {e}") from e
                 if len(data) != take:
                     raise BlockDiffError(
                         f"the source ended at {op.source_offset + self._pos + len(data)}; "

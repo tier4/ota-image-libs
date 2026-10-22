@@ -18,7 +18,10 @@ what must not be believed once it has been."""
 from __future__ import annotations
 
 import hashlib
+import io
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -66,8 +69,30 @@ def test_an_image_that_does_not_fit_is_refused_before_the_first_byte(tmp_path):
     before = dst.read_bytes()
     with open(_blob(tmp_path, "src", b"x" * 500), "rb") as src:
         with pytest.raises(PartitionDeployError, match="refusing to write"):
-            write_image(src, 500, dst)
+            write_image(src, 500, dst, digest=None)
     assert dst.read_bytes() == before
+
+
+def test_a_digest_is_taken_as_a_descriptor_has_it_too(tmp_path):
+    payload = os.urandom(8192)
+    src = _blob(tmp_path, "src", payload)
+    dst = _blob(tmp_path, "dst", b"\0" * 8192)
+    with open(src, "rb") as f:
+        write_image(f, len(payload), dst, digest=f"sha256:{_sha(payload)}")
+
+
+def test_a_partition_that_cannot_be_opened_for_writing_says_so(tmp_path, monkeypatch):
+    dst = _blob(tmp_path, "dst", b"\0" * 8192)
+    real_open = os.open
+
+    def no_write(path, flags, *a, **kw):
+        if Path(path) == dst and flags & os.O_WRONLY:
+            raise PermissionError(13, "Permission denied")
+        return real_open(path, flags, *a, **kw)
+
+    monkeypatch.setattr(os, "open", no_write)
+    with pytest.raises(PartitionDeployError, match=f"cannot open {dst} for writing"):
+        write_image(io.BytesIO(b"x" * 4096), 4096, dst, digest=None)
 
 
 def test_a_digest_that_does_not_match_is_an_error(tmp_path):
@@ -84,14 +109,14 @@ def test_a_source_that_ends_early_is_an_error(tmp_path):
     dst = _blob(tmp_path, "dst", b"\0" * 4096)
     with open(_blob(tmp_path, "src", b"z" * 100), "rb") as src:
         with pytest.raises(PartitionDeployError, match="ended after 100 of 4096"):
-            write_image(src, 4096, dst)
+            write_image(src, 4096, dst, digest=None)
 
 
 def test_an_empty_image_is_refused(tmp_path):
     dst = _blob(tmp_path, "dst", b"\0" * 16)
     with open(_blob(tmp_path, "src", b""), "rb") as src:
         with pytest.raises(PartitionDeployError, match="empty"):
-            write_image(src, 0, dst)
+            write_image(src, 0, dst, digest=None)
 
 
 def test_progress_runs_from_zero_to_a_hundred(tmp_path):
@@ -99,7 +124,9 @@ def test_progress_runs_from_zero_to_a_hundred(tmp_path):
     payload = os.urandom(1 << 16)
     dst = _blob(tmp_path, "dst", b"\0" * len(payload))
     with open(_blob(tmp_path, "src", payload), "rb") as src:
-        write_image(src, len(payload), dst, progress=seen.append, chunk_size=4096)
+        write_image(
+            src, len(payload), dst, digest=None, progress=seen.append, chunk_size=4096
+        )
     assert seen[0] == 0 and seen[-1] == 100
     assert seen == sorted(seen)
 
@@ -148,6 +175,28 @@ def test_a_delta_reconstructs_the_target_and_the_result_is_checked(tmp_path):
             target_digest=_sha(target),
         )
     assert dst.read_bytes() == target
+
+
+@pytest.mark.skipif(not can_apply_delta(), reason="zstd is not installed")
+def test_a_delta_onto_the_device_it_reads_from_is_refused(tmp_path):
+    """Writing the slot the delta reads would destroy the source under the reader, and
+    the running system with it."""
+    slot = _blob(tmp_path, "slot", os.urandom(8192))
+    alias = tmp_path / "alias"
+    alias.symlink_to(slot)
+    before = slot.read_bytes()
+    for dst in (slot, alias):
+        with pytest.raises(PartitionDeployError, match="are the same device"):
+            apply_delta(
+                io.BytesIO(b""),
+                dst,
+                source_dev=slot,
+                source_digest_hex=_sha(before),
+                source_size=8192,
+                target_size=8192,
+                target_digest=_sha(before),
+            )
+    assert slot.read_bytes() == before
 
 
 @pytest.mark.skipif(not can_apply_delta(), reason="zstd is not installed")
@@ -217,6 +266,29 @@ def test_without_veritysetup_the_check_is_left_to_the_boot(tmp_path, monkeypatch
 def test_the_cmdline_grammar_is_the_one_every_platform_reads():
     assert verity_params_in(f"ro verityinfo=/dev/x:{HASH}:1234 quiet") == (HASH, 1234)
     assert verity_params_in("ro quiet") is None
+    # Any root hash the schema accepts, and a grub.cfg's slot variable as the device.
+    long_hash = "c" * 128
+    assert verity_params_in(
+        f"linux /${{slot}}/vmlinuz verityinfo=/dev/disk/by-partlabel/${{slot}}:{long_hash}:8\n"
+    ) == (long_hash, 8)
+
+
+@pytest.mark.parametrize(
+    "cmdline, message",
+    [
+        (f"verityinfo=/dev/x:{HASH}:1 verityinfo=/dev/x:{HASH}:2", "2 verityinfo="),
+        (f"verityinfo=/dev/x:{HASH}:1234:12ab", "is not verityinfo="),
+        (f"verityinfo=/dev/x:{HASH}:0", "is not verityinfo="),
+        (f"verityinfo=/dev/x:{HASH}:12a", "is not verityinfo="),
+        ("verityinfo=/dev/x:abcdef:4096", "is not verityinfo="),
+        (f"verityinfo=:{HASH}:4096", "is not verityinfo="),
+    ],
+)
+def test_a_cmdline_the_initramfs_would_refuse_is_refused_here(cmdline, message):
+    """The kernel reads whitespace-separated arguments and the initramfs takes the last
+    `verityinfo=`: one argument, matched whole, or the check is not of what boots."""
+    with pytest.raises(PartitionDeployError, match=message):
+        verity_params_in(f"ro {cmdline} quiet")
 
 
 def test_a_boot_blob_from_another_build_is_refused_before_anything_is_written():
@@ -234,3 +306,23 @@ def test_an_image_without_verity_annotations_has_nothing_to_check_against():
     """The initramfs stays the backstop there; this is not the place to invent a rule."""
     check_verity_pairing("ro quiet", None, None)
     check_verity_pairing("ro quiet", HASH, None)
+
+
+# --- the vendoring contract -------------------------------------------------------------
+
+
+def test_the_device_side_libs_import_with_the_standard_library_alone():
+    """The USB installer vendors these three without the package's dependencies: they
+    must import in an interpreter that has no site-packages at all."""
+    import ota_image_tools
+
+    src = Path(ota_image_tools.__file__).parents[1]
+    code = (
+        f"import sys; sys.path.insert(0, {str(src)!r}); "
+        "import ota_image_tools.libs.bootimg, ota_image_tools.libs.block_diff, "
+        "ota_image_tools.libs.deploy_partition_image"
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", code], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
