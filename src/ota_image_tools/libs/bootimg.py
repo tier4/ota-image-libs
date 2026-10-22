@@ -41,7 +41,14 @@ CMDLINE_LEN = 512
 EXTRA_CMDLINE_LEN = 1024
 HEADER_LEN = 64 + CMDLINE_LEN + 32 + EXTRA_CMDLINE_LEN
 
-__all__ = ["CMDLINE_LEN", "PAGE_SIZE", "BootImageError", "pack", "read_cmdline"]
+__all__ = [
+    "CMDLINE_LEN",
+    "PAGE_SIZE",
+    "BootImageError",
+    "check_cmdline",
+    "pack",
+    "read_cmdline",
+]
 
 
 class BootImageError(ValueError):
@@ -64,23 +71,31 @@ def _image_id(kernel: bytes, ramdisk: bytes) -> bytes:
     return h.digest().ljust(32, b"\0")
 
 
-def pack(kernel: bytes, ramdisk: bytes, cmdline: str) -> bytes:
-    """A version 0 boot image UEFI will boot, carrying `cmdline`.
+def check_cmdline(cmdline: str) -> bytes:
+    """`cmdline` as the boot image would carry it, or BootImageError when it does not fit.
 
-    The command line has a fixed 512-byte field, and the 1024-byte extra field is not
-    read on this path, so one that does not fit is refused here rather than silently
-    truncated into a kernel that boots the wrong root.
+    The command line has a fixed 512-byte field, NUL-terminated, and the 1024-byte extra
+    field is not read on this path, so one that does not fit is refused rather than
+    silently truncated into a kernel that boots the wrong root. An image build checks
+    the line it composes with this, so that the refusal comes at the build and not on
+    the device that packs the image.
     """
-    if not kernel:
-        raise BootImageError("the boot blob carries no kernel")
-    if not ramdisk:
-        raise BootImageError("the boot blob carries no initramfs")
     encoded = cmdline.encode()
     if len(encoded) >= CMDLINE_LEN:
         raise BootImageError(
             f"the kernel command line is {len(encoded)} bytes and the boot image holds "
             f"{CMDLINE_LEN - 1}; a truncated one would boot the wrong root"
         )
+    return encoded
+
+
+def pack(kernel: bytes, ramdisk: bytes, cmdline: str) -> bytes:
+    """A version 0 boot image UEFI will boot, carrying `cmdline` (see `check_cmdline`)."""
+    if not kernel:
+        raise BootImageError("the boot blob carries no kernel")
+    if not ramdisk:
+        raise BootImageError("the boot blob carries no initramfs")
+    encoded = check_cmdline(cmdline)
     header = struct.pack(
         "<8s10I16s512s32s1024s",
         MAGIC,

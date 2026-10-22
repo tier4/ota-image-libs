@@ -42,6 +42,17 @@ def test_a_command_line_that_does_not_fit_is_refused():
         bootimg.pack(b"K", b"R", "x" * bootimg.CMDLINE_LEN)
 
 
+def test_check_cmdline_takes_what_pack_takes():
+    longest = "x" * (bootimg.CMDLINE_LEN - 1)
+    assert bootimg.check_cmdline(longest) == longest.encode()
+    bootimg.pack(b"K", b"R", longest)
+    with pytest.raises(bootimg.BootImageError, match="512 bytes"):
+        bootimg.check_cmdline(longest + "x")
+    # bytes, not characters: the field holds the encoded line
+    with pytest.raises(bootimg.BootImageError, match="512 bytes"):
+        bootimg.check_cmdline("x" * (bootimg.CMDLINE_LEN - 2) + "\u00e9")
+
+
 def test_an_empty_kernel_or_ramdisk_is_refused():
     with pytest.raises(bootimg.BootImageError, match="no kernel"):
         bootimg.pack(b"", b"R", "a=b")
