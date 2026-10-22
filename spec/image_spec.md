@@ -22,12 +22,14 @@ An OTA image consists of the following components:
 
 - **[File Table](file_table.md)** — A per-payload SQLite3 database that records all file entries of the original system rootfs image, including regular files, non-regular files (symlinks, chardevs), directories, inode metadata, and resource references.
 
-- **[Resource Table](resource_table.md)** — A SQLite3 database that serves as the manifest of the blob storage, recording the digest, size, and optional storage optimization filter for every unique resource in the OTA image.
+- **[Resource Table](resource_table.md)** — A SQLite3 database that serves as the manifest of the blob storage, recording the digest, size, and optional storage optimization filter for every unique resource of the file-based payloads (the blobs of a partition-based payload are stored as they are and are not its business).
 
 - **[Index JWT](index_jwt.md)** (`index.jwt`) — A signed JWT that authenticates the image index.
   Uses ES256 algorithm with X.509 certificate chain.
 
 - **[OTAClient Package](otaclient_package.md)** — An optional OTAClient release package bundled into the OTA image, allowing OTAClient to self-update before performing the OTA.
+
+- **[Update Agent Package](update_agent_package.md)** — An optional package of the agents that apply the image, one bundle per agent type and machine, which a consumer installs and hands over to before applying its payload.
 
 ## Annotations
 

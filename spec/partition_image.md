@@ -15,13 +15,15 @@ Listed in [media_types.md](media_types.md#partition-based-ota-image-media-types)
 
 ## Image Manifest
 
-The image manifest of a partition-based payload is an OCI image manifest (`application/vnd.oci.image.manifest.v1+json`, `schemaVersion` `2`) with `artifactType` set to `application/vnd.tier4.ota.partition-based-ota-image.v1`.
+The image manifest of a partition-based payload is an OCI image manifest (`application/vnd.oci.image.manifest.v1+json`, `schemaVersion` `2`), as the file-based payload's is.
+The two kinds are told apart by the manifest's descriptor in the image index, whose `artifactType` is `application/vnd.tier4.ota.partition-based-ota-image.v1` and is REQUIRED; the manifest itself does not carry it.
 
 - **`config`** points to the [partition image config](#partition-image-config).
 - **`layers`** lists every blob the payload ships — each partition image or, for a partition shipped as a delta, the delta; the boot files tar; each data image or its delta; the firmware package; the vendor package — so that tools can account for them without reading the config.
 - **`annotations`** are the same as the file-based [image manifest](image_manifest.md#annotations-for-image-manifest): `vnd.tier4.pilot-auto.platform.ecu` and `vnd.tier4.ota.release-key` are REQUIRED and identify the payload; the descriptor of the manifest in the image index carries the same two.
 
-A consumer that supports only file-based payloads MUST recognise the `artifactType` and refuse a partition-based payload rather than treat it as a rootfs.
+A consumer from ota-image-libs 0.6.0 on that supports only file-based payloads MUST recognise the `artifactType` and refuse a partition-based payload rather than treat it as a rootfs.
+A consumer before 0.6.0 does not know it and fails on the payload instead, see [image_index.md](image_index.md): such an ECU is not to be given one.
 
 ## Partition Image Config
 
@@ -62,7 +64,7 @@ Media type: `application/vnd.tier4.ota.partition-based-ota-image.config.v1+json`
   - `keep` — the partition is not touched. Anything that must survive the update (per-vehicle identity, persistent data) lives on a `keep` role.
 - **`image`** *[OCI descriptor](https://github.com/opencontainers/image-spec/blob/main/descriptor.md)* — REQUIRED for `write` performed by the agent, MUST be absent otherwise. Either:
   - a **partition image** (`…partition.v1`): raw bytes written to the partition from its start.
-    OPTIONAL annotations: `vnd.tier4.ota.partition-image.filesystem` (e.g. `ext4`); for an image with a dm-verity hash tree appended, `vnd.tier4.ota.partition-image.verity.root-hash` and `vnd.tier4.ota.partition-image.verity.hash-offset` (bytes), which let an installer verify what it wrote without parsing the boot files.
+    OPTIONAL annotations: `vnd.tier4.ota.partition-image.filesystem` (e.g. `ext4`); for an image with a dm-verity hash tree appended, `vnd.tier4.ota.partition-image.verity.root-hash` (32 to 128 lowercase hex digits) and `vnd.tier4.ota.partition-image.verity.hash-offset` (bytes, positive), which let an installer verify what it wrote without parsing the boot files.
     With media type `…partition.v1+zstd` the blob is stored [compressed](#compressed-blobs) and the annotations also carry what it decodes to.
   - the **boot files** (`…boot-files.v1.tar`): a tar of regular files, without directories, to be unpacked into the slot's boot directory.
     It carries the kernel, the initramfs and the boot loader fragment that names the root's verity root hash, which is why a `boot` role is always written together with its `rootfs`.
@@ -81,10 +83,11 @@ Media type: `application/vnd.tier4.ota.partition-based-ota-image.config.v1+json`
 
 A data image is a read-only filesystem image (for instance a squashfs of ML models) with a dm-verity hash tree appended, like a partition image, but written to a **file** on a partition no update touches and mounted at a path, instead of to a slot. It changes on its own cadence: a payload may carry a new one beside a rootfs update, or carry nothing else.
 
-- **`name`** *string* — REQUIRED. A directory name (`[A-Za-z0-9][A-Za-z0-9_.-]*`, at most 64 characters), unique in the config: the device keeps the image under it.
+- **`name`** *string* — REQUIRED. A directory name (`[A-Za-z0-9][A-Za-z0-9_.-]*`, at most 64 characters), unique in the config: the device keeps the image under it. Not `rootfs`, which is what `requires` calls the root image, nor any partition role the config names.
 - **`version`** *string* — REQUIRED. The data image's own version, what the device reports for it.
-- **`mount`** *string* — REQUIRED. An absolute path below `/` where the device mounts the image.
-- **`requires`** *object* — OPTIONAL, default empty. What the running system must be for this image to be installed, keyed by `rootfs` (the root image's version) or another data image's name, each a half-open version range `{"min": "2.4.0", "max": "3.0.0"}` (`min` inclusive, `max` exclusive, either side optional; dotted components compared numerically where both are numbers). An agent MUST refuse an image whose requirements the device does not meet.
+- **`mount`** *string* — REQUIRED. An absolute path below `/` where the device mounts the image, in normal form: no `.` or `..` component and no repeated or trailing `/` (`/.` and `//` are `/` itself).
+- **`requires`** *object* — OPTIONAL, default empty. What the running system must be for this image to be installed, keyed by `rootfs` (the root image's version) or another data image's name, each a half-open version range `{"min": "2.4.0", "max": "3.0.0"}` (`min` inclusive, `max` exclusive, either side optional). An agent MUST refuse an image whose requirements the device does not meet.
+  The bounds are dotted decimal numbers (`2.4.0`, `2026.10.1`), compared component by component as integers, a missing trailing component counting as `0` (`1.0` is `1.0.0`). A version on the device that is not of this form (`v4.2.0`, `2.4.0-rc1`) is outside every range with a bound: it is refused, not guessed at.
 - **`image`** *[OCI descriptor](https://github.com/opencontainers/image-spec/blob/main/descriptor.md)* — REQUIRED. Media type `application/vnd.tier4.ota.partition-based-ota-image.data-image.v1`, or `…data-image.v1+zstd` for one stored [compressed](#compressed-blobs). The same OPTIONAL annotations as a partition image: `vnd.tier4.ota.partition-image.filesystem`, and the verity root hash and hash offset.
 - **`delta`** *[OCI descriptor](https://github.com/opencontainers/image-spec/blob/main/descriptor.md)* — OPTIONAL. A [block diff](#partition-delta) against the data image the device currently holds, with the same annotations and rules as a partition's; the payload then ships only the delta and `image` describes the result.
 
@@ -94,7 +97,7 @@ Firmware is what boots the device before any partition image is read: the bootlo
 
 Firmware is slotted by the platform where it is slotted at all, and on a platform whose rootfs slot follows the boot chain a firmware update is also a slot switch: a payload carrying firmware there MUST write the slot roles too, if only as a delta that copies the committed slot. An agent MUST refuse a firmware package whose `format` its platform's updater does not take.
 
-- **`name`** *string* — REQUIRED. A directory name (`[A-Za-z0-9][A-Za-z0-9_.-]*`, at most 64 characters), what a campaign and a version query address the firmware by; one namespace with the data image names.
+- **`name`** *string* — REQUIRED. A directory name (`[A-Za-z0-9][A-Za-z0-9_.-]*`, at most 64 characters), what a campaign and a version query address the firmware by; one namespace with the data image names, and as they are, not `rootfs` nor a partition role.
 - **`version`** *string* — REQUIRED. The firmware's own version, what the device reports for it afterwards.
 - **`format`** *string* — REQUIRED. The package format, opaque to this specification; it MUST equal the package descriptor's format annotation.
 - **`requires`** *object* — OPTIONAL, as a data image's.
@@ -127,7 +130,7 @@ The boot files tar and the delta are stored as they are (the delta compresses it
 
 ### Blob Storage
 
-The blobs of a partition-based payload are stored in the blob storage **as they are**: the storage optimization filters of the [resource table](resource_table.md) (bundle, compress, slice) MUST NOT be applied to them, and they are not listed in the resource table.
+The blobs of a partition-based payload are stored in the blob storage **as they are**: the storage optimization filters of the [resource table](resource_table.md) (bundle, compress, slice) MUST NOT be applied to them, and they are not recorded in the resource table on their own account (the same bytes may still be listed there as a file-based payload's resource, unfiltered). A tool that copies an image's blobs takes them from the payload's manifest and config, not from the resource table alone.
 An agent streams a partition image straight from the artifact onto the partition, and an installer may map a raw image in place, both of which need the blob's bytes contiguous; a `+zstd` blob is contiguous too, decoded on the way.
 
 ## Example

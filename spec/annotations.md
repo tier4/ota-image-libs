@@ -121,7 +121,7 @@ Annotations on the blob descriptors of a [partition-based payload](partition_ima
 
 - **`vnd.tier4.ota.partition-image.verity.hash-offset`** *int*
 
-  OPTIONAL, with the root hash. The byte offset of the hash tree within the image.
+  OPTIONAL, with the root hash. The byte offset of the hash tree within the image, positive: the tree follows the data.
 
 - **`vnd.tier4.ota.partition-image.vendor-package.format`** *string*
 
@@ -150,6 +150,22 @@ Annotations on the blob descriptors of a [partition-based payload](partition_ima
 - **`vnd.tier4.ota.partition-image.delta.source-size`** *int*
 
   REQUIRED on a partition delta blob. How many bytes of the source the delta applies to.
+
+## Update Agent Release Package Annotations
+
+Annotations on the bundle descriptors of an [update agent release package](update_agent_package.md).
+
+- **`vnd.tier4.ota.update-agent.type`** *string*
+
+  REQUIRED. What the bundle is: `tier4.otaclient.squashfs.v1`, `tier4.ota.agent.v1`, or another consumer's type. A consumer takes only a type it implements.
+
+- **`vnd.tier4.ota.update-agent.version`** *string*
+
+  REQUIRED. The version of the agent in the bundle.
+
+- **`vnd.tier4.ota.update-agent.architecture`** *string*
+
+  OPTIONAL. The machine the bundle runs on (`x86_64` / `amd64`, `arm64` / `aarch64` name the same machines); a bundle without one runs on any machine.
 
 ## Internal Used Annotations
 

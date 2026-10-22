@@ -31,11 +31,12 @@ Schema as code: [`image_index/schema.py`](../src/ota_image_libs/v1/image_index/s
 
   - **OTA image payload, partition-based** — A [partition-based payload](partition_image.md) manifest descriptor with `artifactType` set to `application/vnd.tier4.ota.partition-based-ota-image.v1`, identified by the same two annotations.
     The two payload kinds share the OCI image manifest media type; a consumer tells them apart by `artifactType`, and one identifier (`ecu_id`, `release_key`) names at most one payload of either kind.
+    This entry kind is known from 0.6.0 on. A consumer before that does not refuse the index for it: it takes the entry for a file-based payload and fails only when it parses the manifest of its own ECU's payload, which to it looks like a broken image. A campaign MUST NOT give a partition-based payload to an ECU whose consumer predates 0.6.0; the other ECUs of the same image are unaffected.
 
   - **OTAClient release package** — An [OTAClient package manifest](otaclient_package.md) descriptor with `artifactType` set to `application/vnd.tier4.otaclient.release-package.v1`.
     OTAClient can use this to update itself before performing the OTA.
 
-  - **Update agent release package** — An update agent package manifest descriptor (`application/vnd.tier4.ota.update-agent.release-package.manifest.v1+json`, `artifactType` `application/vnd.tier4.ota.update-agent.release-package.v1`), whose layers are the bundles of the agents the image ships (`update_agent_package/schema.py`).
+  - **Update agent release package** — An [update agent package manifest](update_agent_package.md) descriptor (`application/vnd.tier4.ota.update-agent.release-package.manifest.v1+json`, `artifactType` `application/vnd.tier4.ota.update-agent.release-package.v1`), whose layers are the bundles of the agents the image ships. At most one such entry exists in the manifests list.
     A consumer on a release of this library that predates an entry kind refuses the whole index, so a producer lists only the kinds every consumer of the image knows: this entry is known from 0.6.0 on.
 
   - **Resource table** — A [resource table](resource_table.md) descriptor identified by its `mediaType` (`application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3` or `application/vnd.tier4.ota.file-based-ota-image.resource_table.v1.sqlite3+zstd`). At most one resource table entry exists in the manifests list.

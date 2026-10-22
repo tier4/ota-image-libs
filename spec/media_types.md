@@ -58,10 +58,11 @@ These media types are specific to the [OTAClient release package](otaclient_pack
 
 ## Update Agent Release Package
 
-The agent that applies an OTA image, shipped in it; see [`update_agent_package/schema.py`](../src/ota_image_libs/v1/update_agent_package/schema.py).
+The agents that apply an OTA image, shipped in it; see [update_agent_package.md](update_agent_package.md).
 
 | Media Type | Usage |
 | --- | --- |
 | `application/vnd.tier4.ota.update-agent.release-package.v1` | `artifactType` of the entry's manifest |
 | `application/vnd.tier4.ota.update-agent.release-package.manifest.v1+json` | its manifest, whose `layers` are the bundles |
 | `application/vnd.tier4.ota.update-agent.bundle.v1` | one bundle; annotations `vnd.tier4.ota.update-agent.type`, `.version` and optionally `.architecture` say what it is and what it runs on |
+| `application/vnd.oci.empty.v1+json` | the manifest's `config`, the OCI empty descriptor (`{}`) |

@@ -21,6 +21,7 @@
 
 IMAGE_INDEX = "application/vnd.oci.image.index.v1+json"
 IMAGE_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
+OCI_EMPTY_JSON = "application/vnd.oci.empty.v1+json"  # the `{}` config of an artifact with none
 
 #
 # ------ OTA specific media types ------ #
