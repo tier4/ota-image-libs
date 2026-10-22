@@ -246,7 +246,7 @@ def _feed(
 class _Decoded:
     """The decoder's output, noting whether the consumer read it to its end."""
 
-    def __init__(self, out: BinaryIO) -> None:
+    def __init__(self, out: ByteSource) -> None:
         self._out = out
         self.ended = False
 
