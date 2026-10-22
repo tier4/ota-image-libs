@@ -53,7 +53,9 @@ def resolve_image_from_artifact(
         The parsed ImageManifest or PartitionImageManifest.
     """
     image_index = artifact_reader.parse_index()
-    image_manifest = artifact_reader.select_image_payload(image_id, image_index)
+    image_manifest = artifact_reader.select_image_payload(
+        image_id, image_index
+    ) or artifact_reader.select_partition_image_payload(image_id, image_index)
     if not image_manifest:
         exit_with_err_msg(f"failed to find image with {image_id=}")
 

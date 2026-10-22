@@ -120,15 +120,23 @@ class OTAImageArtifactReader:
 
     def select_image_payload(
         self, _image_id: ImageIdentifier, _image_index: ImageIndex
-    ) -> ImageManifest | PartitionImageManifest | None:
-        """The manifest of the payload identified by `_image_id`, of either kind."""
-        _manifest_descriptor = _image_index.find_image_payload(_image_id)
-        if _manifest_descriptor is None:
-            return None
-        _raw = self.read_blob_as_text(_manifest_descriptor.digest.digest_hex)
-        if isinstance(_manifest_descriptor, PartitionImageManifest.Descriptor):
-            return PartitionImageManifest.parse_metafile(_raw)
-        return ImageManifest.parse_metafile(_raw)
+    ) -> ImageManifest | None:
+        """The file-based payload identified by `_image_id`, as `ImageIndex.find_image`;
+        None also when the payload of that identifier is partition-based."""
+        if _manifest_descriptor := _image_index.find_image(_image_id):
+            return ImageManifest.parse_metafile(
+                self.read_blob_as_text(_manifest_descriptor.digest.digest_hex)
+            )
+
+    def select_partition_image_payload(
+        self, _image_id: ImageIdentifier, _image_index: ImageIndex
+    ) -> PartitionImageManifest | None:
+        """The partition-based payload identified by `_image_id`, as
+        `ImageIndex.find_partition_image`."""
+        if _manifest_descriptor := _image_index.find_partition_image(_image_id):
+            return PartitionImageManifest.parse_metafile(
+                self.read_blob_as_text(_manifest_descriptor.digest.digest_hex)
+            )
 
     def _get_sys_config(self, _descriptor: SysConfig.Descriptor | None):
         if _descriptor is None:

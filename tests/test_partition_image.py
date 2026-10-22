@@ -270,12 +270,10 @@ class TestPartitionDelta:
 
     def test_the_package_applies_its_own_delta(self, resource_dir):
         """A vendor package carries whatever delta it needs inside itself."""
-        rootfs_descriptor, _ = make_blobs(resource_dir)
-        with pytest.raises(ValidationError, match="package"):
+        with pytest.raises(ValidationError, match="a delta is applied by the agent"):
             PartitionEntry(
                 name="rootfs",
                 action=PartitionAction.write,
-                image=rootfs_descriptor,
                 delta=delta_descriptor(resource_dir),
                 performed_by=ActionPerformer.package,
             )
@@ -408,6 +406,9 @@ class TestCompressedBlobs:
         assert desc.mediaType == PARTITION_IMAGE_VENDOR_PACKAGE_ZSTD
         assert desc.format == "example"
         assert desc.size < 8192
+        # What the platform's updater is handed, as for every other compressed blob.
+        assert desc.image_digest == "sha256:" + sha256(b"p" * 8192).hexdigest()
+        assert desc.image_size == 8192
         config = PartitionImageConfig(
             architecture="x86_64",
             image_version="1.0.0",
@@ -536,8 +537,68 @@ class TestDataImages:
         assert _r.allows("2.4.0") and _r.allows("2.10.7")
         assert not _r.allows("2.3.9") and not _r.allows("3.0.0")
         assert VersionRange().allows("anything")
-        with pytest.raises(ValidationError, match="must not be blank"):
-            VersionRange(min=" ")
+
+    @pytest.mark.parametrize(
+        "bounds, version, allowed",
+        [
+            ({"min": "2.4.1"}, "2.4.1", True),
+            ({"min": "1.0.0"}, "1.0", True),  # trailing zeros do not count
+            ({"max": "1.0"}, "1.0.0", False),
+            ({"max": "2.10.1"}, "2.10.0", True),
+            ({"min": "1.9.0"}, "1.10.2", True),
+            ({"min": "2026.9.1"}, "2026.10.1", True),
+            # Not dotted decimal numbers: not guessed at, outside any bounded range.
+            ({"min": "2.4.1"}, "2.4.0-rc1", False),
+            ({"max": "2.10.1"}, "2.10.0-rc1", False),
+            ({"min": "4.0.0", "max": "5.0.0"}, "v4.2.0", False),
+            ({"min": "1.0.0"}, "1.\u00b2", False),  # isdigit(), but not a decimal
+            ({"min": "1.0.0"}, "", False),
+            ({}, "v4.2.0", True),
+        ],
+    )
+    def test_versions_compare_as_dotted_decimal_numbers(self, bounds, version, allowed):
+        assert VersionRange(**bounds).allows(version) is allowed
+
+    @pytest.mark.parametrize(
+        "bounds, message",
+        [
+            ({"min": " "}, "dotted decimal numbers, not ' '"),
+            ({"min": "v1.0"}, "dotted decimal numbers, not 'v1.0'"),
+            ({"max": "2.4.0-rc1"}, "dotted decimal numbers"),
+            ({"max": "1.\u00b2"}, "dotted decimal numbers"),
+            ({"min": "1.0", "max": "1.0.0"}, "an empty version range"),
+            ({"min": "2.0", "max": "1.9"}, "an empty version range"),
+        ],
+    )
+    def test_a_bound_that_cannot_be_compared_is_refused(self, bounds, message):
+        with pytest.raises(ValidationError, match=message):
+            VersionRange(**bounds)
+
+    @pytest.mark.parametrize(
+        "mount",
+        [
+            "/",
+            "//",
+            "///",
+            "/.",
+            "/./",
+            "//opt/models",
+            "/opt/./models",
+            "/opt/models/",
+            "/opt/../models",
+            "opt/models",
+            "",
+        ],
+    )
+    def test_a_mount_is_a_path_below_the_root_in_normal_form(self, resource_dir, mount):
+        """`/.` and `//` are the root itself under another spelling."""
+        with pytest.raises(ValidationError, match="mount must be an absolute path"):
+            self.entry(resource_dir, mount=mount)
+
+    @pytest.mark.parametrize("name", ["models\n", "-models", "a/b", "", "m" * 65])
+    def test_a_name_is_matched_whole(self, resource_dir, name):
+        with pytest.raises(ValidationError, match="invalid data image name"):
+            self.entry(resource_dir, name=name)
 
     def test_a_config_may_carry_only_data_images(self, resource_dir):
         """Every partition kept, one data image: how a data image is updated on its
@@ -826,6 +887,17 @@ class TestManifestAndIndex:
                 json.dumps(raw["manifests"][0])
             )
 
+    def test_an_entry_without_annotations_is_refused_when_the_index_is_read(
+        self, resource_dir
+    ):
+        """The annotations are what identifies a payload: an entry without them is not
+        one to be found later by its identifier."""
+        image_root = build_image(resource_dir)
+        raw = json.loads((image_root / IMAGE_INDEX_FNAME).read_text())
+        raw["manifests"][0].pop("annotations")
+        with pytest.raises(ValidationError):
+            ImageIndex.parse_metafile(json.dumps(raw))
+
     def test_one_update_agent_package_per_image(self, resource_dir):
         image_root = build_image(resource_dir)
         index = ImageIndex.parse_metafile((image_root / IMAGE_INDEX_FNAME).read_text())
@@ -873,9 +945,10 @@ class TestArtifactReader:
 
         with OTAImageArtifactReader(artifact) as reader:
             index = reader.parse_index()
-            manifest = reader.select_image_payload(
-                ImageIdentifier("autoware", OTAReleaseKey.dev), index
-            )
+            autoware = ImageIdentifier("autoware", OTAReleaseKey.dev)
+            # As the index's find_image: the file-based payload only, as before.
+            assert reader.select_image_payload(autoware, index) is None
+            manifest = reader.select_partition_image_payload(autoware, index)
             assert isinstance(manifest, PartitionImageManifest)
             config, sys_config = reader.get_partition_image_config(manifest)
             assert sys_config is None
@@ -894,16 +967,14 @@ class TestArtifactReader:
             ) as tar:
                 assert sorted(tar.getnames()) == ["grub.cfg", "initrd.img", "vmlinuz"]
 
-            other = reader.select_image_payload(
-                ImageIdentifier("perception", OTAReleaseKey.dev), index
+            perception = ImageIdentifier("perception", OTAReleaseKey.dev)
+            assert isinstance(
+                reader.select_image_payload(perception, index), ImageManifest
             )
-            assert isinstance(other, ImageManifest)
-            assert (
-                reader.select_image_payload(
-                    ImageIdentifier("nothing", OTAReleaseKey.dev), index
-                )
-                is None
-            )
+            assert reader.select_partition_image_payload(perception, index) is None
+            nothing = ImageIdentifier("nothing", OTAReleaseKey.dev)
+            assert reader.select_image_payload(nothing, index) is None
+            assert reader.select_partition_image_payload(nothing, index) is None
 
 
 class TestFirmware:
@@ -1026,13 +1097,21 @@ class TestTightenedValidators:
                     PARTITION_IMAGE_VERITY_HASH_OFFSET: 0,
                 }
             )
-        with pytest.raises(ValidationError, match="must not be negative"):
+        with pytest.raises(ValidationError, match="not a hex digest"):
             _PartitionImageAnnotations.model_validate(
                 {
-                    PARTITION_IMAGE_VERITY_ROOT_HASH: "ab" * 32,
-                    PARTITION_IMAGE_VERITY_HASH_OFFSET: -1,
+                    PARTITION_IMAGE_VERITY_ROOT_HASH: "ab" * 32 + "\n",
+                    PARTITION_IMAGE_VERITY_HASH_OFFSET: 4096,
                 }
             )
+        for offset in (-1, 0):  # at 0 the hash tree would overlap the data
+            with pytest.raises(ValidationError, match="must be positive"):
+                _PartitionImageAnnotations.model_validate(
+                    {
+                        PARTITION_IMAGE_VERITY_ROOT_HASH: "ab" * 32,
+                        PARTITION_IMAGE_VERITY_HASH_OFFSET: offset,
+                    }
+                )
 
     def test_an_empty_version_range_is_refused(self):
         from ota_image_libs.v1.partition_image.schema import VersionRange
@@ -1072,9 +1151,11 @@ class TestTightenedValidators:
                 image=img,
                 requires={"ml": VersionRange(min="1")},
             )
+        with pytest.raises(ValidationError, match="what `requires` calls the root"):
+            DataImageEntry(name="rootfs", version="1", mount="/opt/ml", image=img)
         rootfs_descriptor, boot_descriptor = make_blobs(resource_dir)
         cfg = direct_config(rootfs_descriptor, boot_descriptor)
-        entry = DataImageEntry(name="rootfs", version="1", mount="/opt/ml", image=img)
+        entry = DataImageEntry(name="boot", version="1", mount="/opt/ml", image=img)
         with pytest.raises(ValidationError, match="is a partition role"):
             PartitionImageConfig.model_validate(
                 cfg.model_copy(update={"data_images": [entry]}).model_dump(

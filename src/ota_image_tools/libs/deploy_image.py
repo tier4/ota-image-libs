@@ -38,7 +38,7 @@ from ota_image_libs.v1.file_table.utils import (
     prepare_regular_hardlink,
     prepare_regular_inlined,
 )
-from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, ImageManifest
+from ota_image_libs.v1.image_manifest.schema import ImageIdentifier
 from ota_image_libs.v1.resource_table import RESOURCE_TABLE_FNAME
 from ota_image_libs.v1.resource_table.db import ResourceTableDBHelper
 from ota_image_libs.v1.resource_table.utils import PrepareResourceHelper
@@ -94,15 +94,15 @@ class OTAImageDeployerSetup:
                 self.image_manifest = _image_manifest = (
                     artifact_reader.select_image_payload(self._image_id, _image_index)
                 )
-                if not _image_manifest:
-                    exit_with_err_msg(
-                        f"image payload specified by {self._image_id} not found!"
-                    )
-                if not isinstance(_image_manifest, ImageManifest):
+                if _image_index.find_partition_image(self._image_id):
                     exit_with_err_msg(
                         f"image payload {self._image_id} is a partition-based OTA "
                         "image: it carries partition images, not files, and cannot "
                         "be deployed into a rootfs directory."
+                    )
+                if not _image_manifest:
+                    exit_with_err_msg(
+                        f"image payload specified by {self._image_id} not found!"
                     )
 
                 self.image_config, self.sys_config = artifact_reader.get_image_config(

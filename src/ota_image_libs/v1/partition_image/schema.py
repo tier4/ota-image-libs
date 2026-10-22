@@ -19,9 +19,9 @@ package, instead of the files of a rootfs. Specification: spec/partition_image.m
 
 from __future__ import annotations
 
+import posixpath
 import re
-from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 from pydantic import Field, ValidationInfo, model_validator
 from typing_extensions import Self
@@ -79,9 +79,14 @@ from ota_image_libs.v1.media_types import (
 DELTA_ALGORITHM_BLOCK_DIFF = "block-diff"  # ota_image_tools.libs.block_diff
 
 _SHA256_DIGEST = r"^sha256:[0-9a-f]{64}$"
-_HEX_DIGEST = re.compile(r"^[0-9a-f]{32,128}$")
+_HEX_DIGEST = re.compile(r"[0-9a-f]{32,128}")
 # A data image or firmware name is a directory name on the device.
-_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+# What a version range compares: dotted decimal numbers, `2.4.0` or `2026.10.1`.
+_VERSION = re.compile(r"[0-9]+(\.[0-9]+)*")
+# The key `requires` names the root image's version by: no data image or firmware
+# takes it as its name.
+REQUIRES_ROOTFS = "rootfs"
 
 
 class DeliveryMode(StrEnum):
@@ -110,10 +115,11 @@ class _PartitionImageAnnotations(AliasEnabledModel):
     def _verity_whole(self) -> Self:
         if (self.verity_root_hash is None) != (self.verity_hash_offset is None):
             raise ValueError("verity needs both a root hash and a hash offset, or neither")
-        if self.verity_root_hash is not None and not _HEX_DIGEST.match(self.verity_root_hash):
+        if self.verity_root_hash is not None and not _HEX_DIGEST.fullmatch(self.verity_root_hash):
             raise ValueError(f"verity root hash is not a hex digest: {self.verity_root_hash!r}")
-        if self.verity_hash_offset is not None and self.verity_hash_offset < 0:
-            raise ValueError(f"verity hash offset must not be negative: {self.verity_hash_offset}")
+        if self.verity_hash_offset is not None and self.verity_hash_offset <= 0:
+            # The hash tree follows the data: at 0 it would overlap it.
+            raise ValueError(f"verity hash offset must be positive: {self.verity_hash_offset}")
         return self
 
 
@@ -124,14 +130,13 @@ class _UncompressedAnnotations(AliasEnabledModel):
     uncompressed_size: int = Field(alias=PARTITION_IMAGE_UNCOMPRESSED_SIZE, ge=1)
 
 
-class PartitionImageBlobDescriptor(OCIDescriptor):
-    """A raw partition image, written to the partition as it is."""
+class _StoredAsIs:
+    """A blob stored as it is: the bytes the partition, the file or the platform's
+    updater ends up with are the stored ones."""
 
-    class Annotations(_PartitionImageAnnotations): ...
-
-    MediaType = MediaType[PARTITION_IMAGE_BLOB]
-
-    annotations: Union[Annotations, None] = None
+    if TYPE_CHECKING:
+        digest: Any
+        size: int
 
     @property
     def image_digest(self) -> str:
@@ -143,7 +148,33 @@ class PartitionImageBlobDescriptor(OCIDescriptor):
         return self.size
 
 
-class PartitionImageBlobZstdDescriptor(OCIDescriptor):
+class _StoredZstd:
+    """A blob stored zstd-compressed: what it ends up as is in its annotations."""
+
+    if TYPE_CHECKING:
+        annotations: Any
+
+    @property
+    def image_digest(self) -> str:
+        """The digest of the bytes the partition ends up holding."""
+        return self.annotations.uncompressed_digest
+
+    @property
+    def image_size(self) -> int:
+        return self.annotations.uncompressed_size
+
+
+class PartitionImageBlobDescriptor(_StoredAsIs, OCIDescriptor):
+    """A raw partition image, written to the partition as it is."""
+
+    class Annotations(_PartitionImageAnnotations): ...
+
+    MediaType = MediaType[PARTITION_IMAGE_BLOB]
+
+    annotations: Union[Annotations, None] = None
+
+
+class PartitionImageBlobZstdDescriptor(_StoredZstd, OCIDescriptor):
     """The same, stored zstd-compressed: decoded on the way to the partition."""
 
     class Annotations(_PartitionImageAnnotations, _UncompressedAnnotations): ...
@@ -151,14 +182,6 @@ class PartitionImageBlobZstdDescriptor(OCIDescriptor):
     MediaType = MediaType[PARTITION_IMAGE_BLOB_ZSTD]
 
     annotations: Annotations = Field(...)
-
-    @property
-    def image_digest(self) -> str:
-        return self.annotations.uncompressed_digest
-
-    @property
-    def image_size(self) -> int:
-        return self.annotations.uncompressed_size
 
 
 PARTITION_IMAGE_BLOB_TYPES = (PartitionImageBlobDescriptor, PartitionImageBlobZstdDescriptor)
@@ -183,7 +206,7 @@ class PartitionDeltaDescriptor(OCIDescriptor):
     annotations: Annotations = Field(...)
 
 
-class VendorPackageDescriptor(OCIDescriptor):
+class VendorPackageDescriptor(_StoredAsIs, OCIDescriptor):
     """One opaque package the platform's own updater applies."""
 
     class Annotations(AliasEnabledModel):
@@ -198,7 +221,7 @@ class VendorPackageDescriptor(OCIDescriptor):
         return self.annotations.format if self.annotations else None
 
 
-class VendorPackageZstdDescriptor(OCIDescriptor):
+class VendorPackageZstdDescriptor(_StoredZstd, OCIDescriptor):
     """The same, stored zstd-compressed: decoded while staging it for the platform."""
 
     class Annotations(_UncompressedAnnotations):
@@ -213,7 +236,7 @@ class VendorPackageZstdDescriptor(OCIDescriptor):
         return self.annotations.format
 
 
-class FirmwarePackageDescriptor(OCIDescriptor):
+class FirmwarePackageDescriptor(_StoredAsIs, OCIDescriptor):
     """A package the platform's own firmware updater applies, staged by the agent."""
 
     class Annotations(AliasEnabledModel):
@@ -227,17 +250,8 @@ class FirmwarePackageDescriptor(OCIDescriptor):
     def format(self) -> str:
         return self.annotations.format
 
-    @property
-    def image_digest(self) -> str:
-        """The digest of the package the platform's updater is handed."""
-        return str(self.digest)
 
-    @property
-    def image_size(self) -> int:
-        return self.size
-
-
-class FirmwarePackageZstdDescriptor(OCIDescriptor):
+class FirmwarePackageZstdDescriptor(_StoredZstd, OCIDescriptor):
     """The same, stored zstd-compressed: decoded while staging it."""
 
     class Annotations(_UncompressedAnnotations):
@@ -251,16 +265,8 @@ class FirmwarePackageZstdDescriptor(OCIDescriptor):
     def format(self) -> str:
         return self.annotations.format
 
-    @property
-    def image_digest(self) -> str:
-        return self.annotations.uncompressed_digest
 
-    @property
-    def image_size(self) -> int:
-        return self.annotations.uncompressed_size
-
-
-class DataImageBlobDescriptor(OCIDescriptor):
+class DataImageBlobDescriptor(_StoredAsIs, OCIDescriptor):
     """A data image: a read-only filesystem image with its dm-verity hash tree appended,
     kept as a file outside the slots and mounted at a path. Written as it is."""
 
@@ -270,16 +276,8 @@ class DataImageBlobDescriptor(OCIDescriptor):
 
     annotations: Union[Annotations, None] = None
 
-    @property
-    def image_digest(self) -> str:
-        return str(self.digest)
 
-    @property
-    def image_size(self) -> int:
-        return self.size
-
-
-class DataImageBlobZstdDescriptor(OCIDescriptor):
+class DataImageBlobZstdDescriptor(_StoredZstd, OCIDescriptor):
     """The same, stored zstd-compressed: decoded on the way to the file."""
 
     class Annotations(_PartitionImageAnnotations, _UncompressedAnnotations): ...
@@ -287,14 +285,6 @@ class DataImageBlobZstdDescriptor(OCIDescriptor):
     MediaType = MediaType[PARTITION_IMAGE_DATA_IMAGE_ZSTD]
 
     annotations: Annotations = Field(...)
-
-    @property
-    def image_digest(self) -> str:
-        return self.annotations.uncompressed_digest
-
-    @property
-    def image_size(self) -> int:
-        return self.annotations.uncompressed_size
 
 
 DATA_IMAGE_BLOB_TYPES = (DataImageBlobDescriptor, DataImageBlobZstdDescriptor)
@@ -330,17 +320,25 @@ def _check_identity_delta(what: str, delta, image) -> None:
 
 
 def _check_name_and_version(what: str, name: str, version: str) -> None:
-    if not _NAME.match(name):
+    if not _NAME.fullmatch(name):
         raise ValueError(f"invalid {what} name: {name!r}")
+    if name == REQUIRES_ROOTFS:
+        raise ValueError(
+            f"{what} {name!r}: the name is what `requires` calls the root image by"
+        )
     if not version.strip():
         raise ValueError(f"{what} {name!r}: version must not be empty")
 
 
-def _version_parts(version: str) -> tuple:
-    """`1.10.2` sorts after `1.9.0`; a non-numeric component compares as text."""
-    _parts: List[tuple] = []
-    for _c in version.strip().split("."):
-        _parts.append((0, int(_c)) if _c.isdigit() else (1, _c))
+def version_key(version: str) -> Union[Tuple[int, ...], None]:
+    """What a version range compares a version by: its dotted decimal numbers, so that
+    `1.10.2` is after `1.9.0` and `1.0` is `1.0.0`. None for a version that is not
+    dotted decimal numbers (`v1.2`, `2.4.0-rc1`): such a version is not guessed at."""
+    if not _VERSION.fullmatch(version):
+        return None
+    _parts = [int(_c) for _c in version.split(".")]
+    while len(_parts) > 1 and _parts[-1] == 0:
+        _parts.pop()
     return tuple(_parts)
 
 
@@ -403,9 +401,9 @@ class PartitionEntry(AliasEnabledModel):
 
 
 class VersionRange(AliasEnabledModel):
-    """A half-open range of dotted versions: `min` inclusive, `max` exclusive, either
-    side open when absent. Compared component-wise, numerically where both sides are
-    numbers."""
+    """A half-open range of versions: `min` inclusive, `max` exclusive, either side open
+    when absent. Both bounds are dotted decimal numbers, compared as `version_key`
+    does; a version that is not is outside every range with a bound."""
 
     min: Union[str, None] = None
     max: Union[str, None] = None
@@ -413,12 +411,14 @@ class VersionRange(AliasEnabledModel):
     @model_validator(mode="after")
     def _well_formed(self) -> Self:
         for _side in (self.min, self.max):
-            if _side is not None and not _side.strip():
-                raise ValueError("a version bound must not be blank")
+            if _side is not None and version_key(_side) is None:
+                raise ValueError(
+                    f"a version bound is dotted decimal numbers, not {_side!r}"
+                )
         if (
             self.min is not None
             and self.max is not None
-            and _version_parts(self.min) >= _version_parts(self.max)
+            and version_key(self.min) >= version_key(self.max)  # type: ignore[operator]
         ):
             raise ValueError(
                 f"an empty version range: min {self.min!r} is not below max {self.max!r}"
@@ -426,10 +426,14 @@ class VersionRange(AliasEnabledModel):
         return self
 
     def allows(self, version: str) -> bool:
-        _v = _version_parts(version)
-        if self.min is not None and _v < _version_parts(self.min):
+        if self.min is None and self.max is None:
+            return True
+        _v = version_key(version)
+        if _v is None:
             return False
-        if self.max is not None and _v >= _version_parts(self.max):
+        if self.min is not None and _v < version_key(self.min):  # type: ignore[operator]
+            return False
+        if self.max is not None and _v >= version_key(self.max):  # type: ignore[operator]
             return False
         return True
 
@@ -453,11 +457,17 @@ class DataImageEntry(AliasEnabledModel):
     @model_validator(mode="after")
     def _well_formed(self) -> Self:
         _check_name_and_version("data image", self.name, self.version)
-        _mount = Path(self.mount)
-        if not _mount.is_absolute() or ".." in _mount.parts or self.mount == "/":
+        # In normal form, so that what is compared is what the device mounts on: `/.`
+        # or `//` would be `/` itself.
+        if (
+            not self.mount.startswith("/")
+            or self.mount.startswith("//")
+            or posixpath.normpath(self.mount) != self.mount
+            or self.mount == "/"
+        ):
             raise ValueError(
-                f"data image {self.name!r}: mount must be an absolute path below /, "
-                f"not {self.mount!r}"
+                f"data image {self.name!r}: mount must be an absolute path below /, in "
+                f"normal form, not {self.mount!r}"
             )
         if self.delta is not None:
             _check_identity_delta(f"data image {self.name!r}", self.delta, self.image)
@@ -642,7 +652,7 @@ class PartitionImageManifest(ImageIDMixin, MetaFileBase):
         MediaType = MediaType[IMAGE_MANIFEST]
         ArtifactType = ArtifactType[PARTITION_IMAGE_ARTIFACT]
 
-        annotations: Union[Annotations, None] = None
+        annotations: Annotations = Field(...)
 
         @model_validator(mode="before")
         @classmethod
