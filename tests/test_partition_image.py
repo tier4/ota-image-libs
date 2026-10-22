@@ -44,7 +44,12 @@ from ota_image_libs.v1.annotation_keys import (
     SYS_IMAGE_BASE_IMAGE,
 )
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
-from ota_image_libs.v1.consts import IMAGE_INDEX_FNAME, RESOURCE_DIR
+from ota_image_libs.v1.consts import (
+    IMAGE_INDEX_FNAME,
+    OCI_LAYOUT_F_CONTENT,
+    OCI_LAYOUT_FNAME,
+    RESOURCE_DIR,
+)
 from ota_image_libs.v1.image_index.schema import ImageIndex
 from ota_image_libs.v1.image_manifest.schema import (
     ImageIdentifier,
@@ -84,7 +89,17 @@ from ota_image_libs.v1.partition_image.schema import (
     VersionRange,
 )
 from ota_image_libs.v1.update_agent_package.schema import UpdateAgentPackageManifest
-from ota_image_tools.cmds.list_image import _render_output
+from ota_image_tools.cmds.get_filetable import (
+    _get_filetable_from_artifact,
+    _get_filetable_from_folder,
+)
+from ota_image_tools.cmds.list_image import (
+    _list_image_from_artifact,
+    _list_image_from_folder,
+    _render_output,
+)
+from ota_image_tools.cmds.lookup_image import _lookup_image_from_artifact
+from ota_image_tools.libs.deploy_image import OTAImageDeployerSetup
 
 ROOT_HASH = "194fde591ff4d762eb379215fa650c61f359d9ea66dc4c3be9b27e9a02726abc"
 ROOTFS_BYTES = b"\x01" * 8192 + b"\x02" * 4096  # "data" then "hash tree"
@@ -922,20 +937,80 @@ class TestManifestAndIndex:
         with pytest.raises(ValueError, match="already been added"):
             index.add_image(duplicate)
 
-    def test_list_image_names_the_kind(self, resource_dir):
-        image_root = build_image(resource_dir, with_file_based=True)
-        index = ImageIndex.parse_metafile((image_root / IMAGE_INDEX_FNAME).read_text())
-        out = _render_output(
-            [
-                d
-                for d in index.manifests
-                if isinstance(
-                    d, (ImageManifest.Descriptor, PartitionImageManifest.Descriptor)
-                )
-            ]
+
+class TestCommands:
+    """The ota-image-tools commands on an image that carries a partition-based payload:
+    what each does with it, from a folder and from an artifact."""
+
+    AUTOWARE = ImageIdentifier("autoware", OTAReleaseKey.dev)
+
+    @staticmethod
+    def folder(resource_dir: Path, **kw) -> Path:
+        image_root = build_image(resource_dir, **kw)
+        (image_root / OCI_LAYOUT_FNAME).write_text(OCI_LAYOUT_F_CONTENT)
+        return image_root
+
+    def test_list_image_lists_both_kinds_and_names_them(self, resource_dir, tmp_path):
+        image_root = self.folder(resource_dir, with_file_based=True)
+        artifact = pack(image_root, tmp_path / "artifact.zip")
+        for listed in (
+            _list_image_from_folder(image_root),
+            _list_image_from_artifact(artifact),
+        ):
+            assert len(listed) == 2
+            out = _render_output(listed)
+            assert "ecu_id='autoware'" in out and "kind='partition-based'" in out
+            assert "ecu_id='perception'" in out and "kind='file-based'" in out
+
+    def test_get_filetable_says_a_partition_payload_has_none(
+        self, resource_dir, tmp_path, capsys
+    ):
+        image_root = self.folder(resource_dir)
+        artifact = pack(image_root, tmp_path / "artifact.zip")
+        for run, root in (
+            (_get_filetable_from_folder, image_root),
+            (_get_filetable_from_artifact, artifact),
+        ):
+            with pytest.raises(SystemExit):
+                run(image_root=root, image_id=self.AUTOWARE, output=tmp_path / "ft")
+            assert "partition-based OTA image" in capsys.readouterr().err
+            assert not (tmp_path / "ft").exists()
+
+    def test_lookup_image_shows_the_partition_config(
+        self, resource_dir, tmp_path, capsys
+    ):
+        artifact = pack(self.folder(resource_dir), tmp_path / "artifact.zip")
+        _lookup_image_from_artifact(
+            image_root=artifact, image_id=self.AUTOWARE, show_image_config=True
         )
-        assert "ecu_id='autoware'" in out and "kind='partition-based'" in out
-        assert "ecu_id='perception'" in out and "kind='file-based'" in out
+        config = json.loads(capsys.readouterr().out)
+        assert config["delivery"] == "direct"
+        assert config["image_version"] == "1.2.0"
+
+    def test_deploy_image_refuses_a_partition_payload(
+        self, resource_dir, tmp_path, capsys
+    ):
+        """It deploys files into a directory: a partition-based payload has none."""
+        image_root = self.folder(resource_dir, with_file_based=True)
+        # The deployer reads the resource table first: borrow the fixture's.
+        fixture = Path(__file__).parent / "data" / "ota-image.zip"
+        index = ImageIndex.parse_metafile((image_root / IMAGE_INDEX_FNAME).read_text())
+        with ZipFile(fixture) as zf:
+            rst = ImageIndex.parse_metafile(
+                zf.read(IMAGE_INDEX_FNAME).decode()
+            ).image_resource_table
+            assert rst is not None
+            (resource_dir / rst.digest.digest_hex).write_bytes(
+                zf.read(f"{RESOURCE_DIR}/{rst.digest.digest_hex}")
+            )
+        index.update_resource_table(rst)
+        (image_root / IMAGE_INDEX_FNAME).write_text(index.export_metafile())
+        artifact = pack(image_root, tmp_path / "artifact.zip")
+        workdir = tmp_path / "work"
+        workdir.mkdir()
+        with pytest.raises(SystemExit):
+            OTAImageDeployerSetup(self.AUTOWARE, artifact=artifact, workdir=workdir)
+        assert "cannot be deployed into a rootfs directory" in capsys.readouterr().err
 
 
 class TestArtifactReader:
