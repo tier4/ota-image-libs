@@ -17,10 +17,11 @@ The unit tests fake both tools, which is the right trade for a suite that has to
 anywhere -- but it leaves the one thing that matters untested: that veritysetup really
 does refuse a slot whose bytes have changed, and that a delta really does reconstruct
 the next image from the bytes that are on the device. This runs the same code on the
-real tools. It needs loop devices, so it is not part of the suite.
+real tools. It needs loop devices, so it is not part of the suite (and the host's
+/dev, where the loop devices it attaches appear).
 
-    docker run --rm --privileged -v "$PWD/src:/libs:ro" -v "$PWD/tests/scripts:/t:ro" \
-        ubuntu:24.04 sh -c 'apt-get update -qq &&
+    docker run --rm --privileged -v /dev:/dev \
+        -v "$PWD/src:/libs:ro" -v "$PWD/tests/scripts:/t:ro" ubuntu:24.04 sh -c 'apt-get update -qq &&
             apt-get install -y -qq python3 python3-zstandard e2fsprogs cryptsetup-bin zstd &&
             mkdir -p /work && PYTHONPATH=/libs python3 /t/deploy_partition_on_loop.py'
 """
