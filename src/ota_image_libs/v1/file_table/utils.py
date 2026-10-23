@@ -126,7 +126,9 @@ def prepare_regular_copy(
             # NOTE: if owner is changed, the sticky bit will be reset.
             #       Remember to always put chown before chmod !!!
             os.chown(_target_on_mnt, uid=_uid, gid=_gid)
-            os.chmod(_target_on_mnt, mode=_mode)
+        # NOTE: touch creates the file with the mode masked by the umask, and
+        #       leaves an existing file's mode as it is, so always chmod.
+        os.chmod(_target_on_mnt, mode=_mode)
 
         if _xattr := entry.xattrs:
             _set_xattr(_target_on_mnt, _in=_xattr)
@@ -151,7 +153,9 @@ def prepare_regular_inlined(entry: RegularFileRow, *, target_mnt: Path) -> Path:
             # NOTE: if owner is changed, the sticky bit will be reset.
             #       Remember to always put chown before chmod !!!
             os.chown(_target_on_mnt, uid=_uid, gid=_gid)
-            os.chmod(_target_on_mnt, mode=_mode)
+        # NOTE: touch creates the file with the mode masked by the umask, and
+        #       leaves an existing file's mode as it is, so always chmod.
+        os.chmod(_target_on_mnt, mode=_mode)
 
         if _xattr := entry.xattrs:
             _set_xattr(_target_on_mnt, _in=_xattr)

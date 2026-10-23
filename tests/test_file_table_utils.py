@@ -35,6 +35,16 @@ from ota_image_libs.v1.file_table.utils import (
 )
 
 
+@pytest.fixture
+def umask_022():
+    """Run the test under the common umask 022, then restore the original."""
+    _old = os.umask(0o022)
+    try:
+        yield
+    finally:
+        os.umask(_old)
+
+
 class TestSetXattr:
     """Tests for _set_xattr function."""
 
@@ -386,6 +396,57 @@ class TestPrepareRegularCopy:
         # File should not exist after failed copy
         assert not target_file.exists()
 
+    @pytest.mark.parametrize("mode", [0o100664, 0o100666, 0o104755])
+    def test_prepare_regular_copy_root_owned_mode_not_masked(
+        self, tmp_path, umask_022, mode
+    ):
+        """Test that a root-owned file gets its recorded mode, not one masked by the umask."""
+        target_mnt = tmp_path / "mnt"
+        target_mnt.mkdir()
+        (target_mnt / "test").mkdir()  # Create parent directory
+
+        source_file = tmp_path / "source.txt"
+        source_file.write_bytes(b"content")
+
+        entry = RegularFileRow(
+            path="/test/file.txt",
+            uid=0,
+            gid=0,
+            mode=mode,
+            digest=b"digest",
+            size=7,
+            inode_id=1,
+        )
+
+        result = prepare_regular_copy(entry, source_file, target_mnt=target_mnt)
+
+        assert stat.S_IMODE(result.stat().st_mode) == stat.S_IMODE(mode)
+
+    def test_prepare_regular_copy_root_owned_existing_file(self, tmp_path, umask_022):
+        """Test that an existing target file of a root-owned entry gets the recorded mode."""
+        target_mnt = tmp_path / "mnt"
+        target_mnt.mkdir()
+        (target_mnt / "test").mkdir()  # Create parent directory
+        existing = target_mnt / "test" / "file.txt"
+        existing.touch(mode=0o600)
+
+        source_file = tmp_path / "source.txt"
+        source_file.write_bytes(b"content")
+
+        entry = RegularFileRow(
+            path="/test/file.txt",
+            uid=0,
+            gid=0,
+            mode=0o100644,
+            digest=b"digest",
+            size=7,
+            inode_id=1,
+        )
+
+        result = prepare_regular_copy(entry, source_file, target_mnt=target_mnt)
+
+        assert stat.S_IMODE(result.stat().st_mode) == 0o644
+
 
 class TestPrepareRegularInlined:
     """Tests for prepare_regular_inlined function."""
@@ -460,6 +521,31 @@ class TestPrepareRegularInlined:
 
         actual = os.getxattr(result, "user.inline")
         assert actual == b"attr_value"
+
+    @pytest.mark.parametrize("contents", [b"data", None])
+    @pytest.mark.parametrize("mode", [0o100664, 0o100666, 0o104755])
+    def test_prepare_regular_inlined_root_owned_mode_not_masked(
+        self, tmp_path, umask_022, mode, contents
+    ):
+        """Test that a root-owned file gets its recorded mode, not one masked by the umask."""
+        target_mnt = tmp_path / "mnt"
+        target_mnt.mkdir()
+        (target_mnt / "test").mkdir()  # Create parent directory
+
+        entry = RegularFileRow(
+            path="/test/file.txt",
+            uid=0,
+            gid=0,
+            mode=mode,
+            digest=b"digest",
+            size=len(contents) if contents else 0,
+            inode_id=1,
+            contents=contents,
+        )
+
+        result = prepare_regular_inlined(entry, target_mnt=target_mnt)
+
+        assert stat.S_IMODE(result.stat().st_mode) == stat.S_IMODE(mode)
 
 
 class TestPrepareRegularHardlink:
