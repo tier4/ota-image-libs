@@ -43,14 +43,14 @@ jobs:
   build_and_release_ota_image_tools:
     runs-on: ubuntu-latest
     container:
-      # glibc compatible with ubuntu:20.04 and newer
-      image: debian:bullseye
+      # the oldest supported ubuntu, so that the binary's glibc (2.35) runs on 22.04 and 24.04
+      image: ubuntu:22.04
 
     steps:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends \
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             git curl ca-certificates binutils
 
       - name: Checkout repository

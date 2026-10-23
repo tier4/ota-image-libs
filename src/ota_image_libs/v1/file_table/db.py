@@ -19,7 +19,7 @@ import sqlite3
 import typing
 from contextlib import closing
 from pathlib import Path
-from typing import Callable, Generator, Optional
+from typing import Annotated, Callable, Generator, Optional
 
 from pydantic import SkipValidation
 from simple_sqlite3_orm import (
@@ -38,7 +38,6 @@ from simple_sqlite3_orm.utils import (
     enable_wal_mode,
     lookup_table,
 )
-from typing_extensions import Annotated
 
 from ota_image_libs.common.model_spec import MsgPackedDict, StrOrPath
 from ota_image_libs.v1.media_types import OTA_IMAGE_FILETABLE
@@ -470,11 +469,10 @@ class FileTableDBHelper:
         dst_dir = Path(dst_dir)
         dst_dir.mkdir(exist_ok=True, parents=True)
 
-        with contextlib.closing(
-            self.connect_fstable_db()
-        ) as _fs_conn, contextlib.closing(
-            sqlite3.connect(dst_dir / saved_name)
-        ) as _dst_conn:
+        with (
+            contextlib.closing(self.connect_fstable_db()) as _fs_conn,
+            contextlib.closing(sqlite3.connect(dst_dir / saved_name)) as _dst_conn,
+        ):
             with _dst_conn as conn:
                 _fs_conn.backup(conn)
 

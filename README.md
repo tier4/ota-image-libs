@@ -107,9 +107,9 @@ The OTA image v1 specification is available in the [spec/](spec/) directory:
 | [index_jwt.md](spec/index_jwt.md) | JWT signing specification |
 | [otaclient_package.md](spec/otaclient_package.md) | OTAClient release package format |
 
-## Supported Python Versions
+## Supported Python Versions and Platforms
 
-Python 3.8, 3.9, 3.10, 3.11, 3.12, 3.13
+Python 3.10, 3.11, 3.12, 3.13, on Ubuntu 22.04 and 24.04. The `ota-image-tools` binary attached to each release is built on Ubuntu 22.04 and runs on both.
 
 ## Contributing
 

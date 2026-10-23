@@ -24,10 +24,9 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Generator, Optional, TypeAlias
 
 import zstandard
-from typing_extensions import TypeAlias
 
 from ota_image_libs._resource_filter import BundleFilter, CompressFilter, SliceFilter
 from ota_image_libs.common import tmp_fname
@@ -443,9 +442,10 @@ class ResumeOTADownloadHelper:
     def check_download_dir(self) -> int:
         """Scan through OTA download dir and try to recover resources."""
         _count = 0
-        with ThreadPoolExecutor(
-            thread_name_prefix="resume_ota_download"
-        ) as pool, os.scandir(self._download_dir) as it:
+        with (
+            ThreadPoolExecutor(thread_name_prefix="resume_ota_download") as pool,
+            os.scandir(self._download_dir) as it,
+        ):
             for entry in it:
                 if (
                     not entry.is_file(follow_symlinks=False)
