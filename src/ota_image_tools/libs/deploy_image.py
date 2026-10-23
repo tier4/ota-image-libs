@@ -94,6 +94,12 @@ class OTAImageDeployerSetup:
                 self.image_manifest = _image_manifest = (
                     artifact_reader.select_image_payload(self._image_id, _image_index)
                 )
+                if _image_index.find_partition_image(self._image_id):
+                    exit_with_err_msg(
+                        f"image payload {self._image_id} is a partition-based OTA "
+                        "image: it carries partition images, not files, and cannot "
+                        "be deployed into a rootfs directory."
+                    )
                 if not _image_manifest:
                     exit_with_err_msg(
                         f"image payload specified by {self._image_id} not found!"

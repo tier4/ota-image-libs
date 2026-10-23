@@ -61,6 +61,12 @@ def oci_descriptor_before_validator(cls: Any, data: Any, info: ValidationInfo) -
             _schema_ver_checker.validate(data.get("schemaVersion"))
         if _media_type_checker := cls.__dict__.get("MediaType"):
             _media_type_checker.validate(data.get("mediaType"))
+        # NOTE(20260915): the file-based and partition-based payload descriptors share
+        #   a mediaType and differ by artifactType; an input without one parses as before.
+        if "artifactType" in data and (
+            _artifact_type_checker := cls.__dict__.get("ArtifactType")
+        ):
+            _artifact_type_checker.validate(data.get("artifactType"))
     return data
 
 

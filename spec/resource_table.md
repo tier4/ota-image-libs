@@ -1,7 +1,8 @@
 # Resource Table
 
 The resource table is a SQLite3 database (`resource_table.sqlite3`) that serves as the manifest of the OTA image blob storage.
-It records every unique resource (blob) in the OTA image, including the digest, size, and optional storage optimization filter.
+It records every unique resource (blob) of the file-based payloads in the OTA image, including the digest, size, and optional storage optimization filter.
+The blobs of a [partition-based payload](partition_image.md#blob-storage) are an exception: they are stored as they are, no filter is ever applied to them, and they are not recorded here on their own account; a tool that copies an image's blobs takes them from the payload's manifest and config.
 
 The resource table is referenced from the [image index](image_index.md) as a top-level manifest entry.
 

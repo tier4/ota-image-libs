@@ -79,8 +79,21 @@ All schemas required for OTA image specification v1 are as follows:
 | `resource_table/` | SQLite-backed blob/resource metadata |
 | `index_jwt/` | JWT signing/verification schema and utilities |
 | `otaclient_package/` | OTAClient release package format |
+| `partition_image/` | `PartitionImageManifest`, `PartitionImageConfig` — the partition-based payload (whole partition images, data images, firmware, deltas), see `spec/partition_image.md` |
+| `update_agent_package/` | `UpdateAgentPackageManifest` — the update agent release package, one entry carrying every agent the image ships, see `spec/update_agent_package.md` |
 
 Within each module, besides schemas, utils for operating the metadata are also available.
+
+### Shared Deployment Libs (`ota_image_tools/libs/`)
+
+Used by the CLI commands and by other tools (the USB installer, the flash helper, the update agent) that depend on this package.
+
+- **`deploy_image.py`** — Deploys a file-based payload into a rootfs directory.
+- **`deploy_partition_image.py`** — Writes a partition-based payload onto block devices: streams an image (raw or `+zstd`) to a partition hashing on the way, applies a block-diff delta, checks dm-verity. Standard library only, plus the `zstd` and `veritysetup` binaries, so that a consumer without the `zstandard` module can use it.
+- **`block_diff.py`** — The partition delta format: encoder (needs `zstandard`), reader and reconstruction (standard library).
+- **`bootimg.py`** — Packs and reads the Android boot image (version 0) an L4T kernel partition holds, the kernel command line in its 512-byte field. Standard library only.
+
+The three device-side modules above (`deploy_partition_image`, `block_diff`'s reader, `bootimg`) must import with the standard library alone: `tests/test_deploy_partition_image.py` imports them in `python -I -S`.
 
 ### Blob Storage Optimization (`ota_image_libs/_resource_filter/`)
 
@@ -118,6 +131,7 @@ Consult these when working on schemas or adding new features rather than reverse
 
 - `image_spec.md` — Overall OTA image specification overview
 - `image_index.md`, `image_manifest.md`, `image_config.md`, `sys_config.md` — Per-component schemas
+- `partition_image.md` — Partition-based payload, its config, data images, firmware and the delta format
 - `file_table.md`, `resource_table.md` — SQLite database schemas
 - `annotations.md` — Standard annotation key definitions
 - `index_jwt.md` — JWT signing specification

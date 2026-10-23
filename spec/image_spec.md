@@ -2,8 +2,8 @@
 
 ## Overview
 
-An OTA image of specification version 1 is a unique representation of an input system rootfs image.
-It is designed for file-based OTA updates, where each file in the rootfs is individually tracked and deduplicated.
+An OTA image of specification version 1 is a unique representation of an input system image.
+An OTA image carries file-based payloads, where each file of a rootfs is tracked and deduplicated, and [partition-based payloads](partition_image.md), where whole partition images are; both share the index and the signing.
 
 An OTA image consists of the following components:
 
@@ -14,18 +14,22 @@ An OTA image consists of the following components:
   Each image manifest represents a single ECU's OTA payload and follows the OCI image manifest specification.
   An image manifest is uniquely identified by its `ecu_id` and `ota_release_key`.
 
-- **[Image Config](image_config.md)** — Configuration metadata for an image payload, including architecture, OS information, system config reference, and statistics about the original rootfs.
+- **[Image Config](image_config.md)** — Configuration metadata for a file-based image payload, including architecture, OS information, system config reference, and statistics about the original rootfs.
+
+- **[Partition Image Payload](partition_image.md)** — An image payload made of whole partition images (or one vendor package) with a per-partition-role action list, for read-only, integrity-protected roots.
 
 - **[Sys Config](sys_config.md)** — System-level configuration for the target device, including hostname, mount points, swap, sysctl settings, and OTAClient configuration.
 
 - **[File Table](file_table.md)** — A per-payload SQLite3 database that records all file entries of the original system rootfs image, including regular files, non-regular files (symlinks, chardevs), directories, inode metadata, and resource references.
 
-- **[Resource Table](resource_table.md)** — A SQLite3 database that serves as the manifest of the blob storage, recording the digest, size, and optional storage optimization filter for every unique resource in the OTA image.
+- **[Resource Table](resource_table.md)** — A SQLite3 database that serves as the manifest of the blob storage, recording the digest, size, and optional storage optimization filter for every unique resource of the file-based payloads (the blobs of a partition-based payload are stored as they are and are not its business).
 
 - **[Index JWT](index_jwt.md)** (`index.jwt`) — A signed JWT that authenticates the image index.
   Uses ES256 algorithm with X.509 certificate chain.
 
 - **[OTAClient Package](otaclient_package.md)** — An optional OTAClient release package bundled into the OTA image, allowing OTAClient to self-update before performing the OTA.
+
+- **[Update Agent Package](update_agent_package.md)** — An optional package of the agents that apply the image, one bundle per agent type and machine, which a consumer installs and hands over to before applying its payload.
 
 ## Annotations
 

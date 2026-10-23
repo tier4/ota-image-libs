@@ -29,6 +29,10 @@ from ota_image_libs.v1.image_config.schema import ImageConfig
 from ota_image_libs.v1.image_config.sys_config import SysConfig
 from ota_image_libs.v1.image_index.schema import ImageIndex
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, ImageManifest
+from ota_image_libs.v1.partition_image.schema import (
+    PartitionImageConfig,
+    PartitionImageManifest,
+)
 
 DEFAULT_READ_SIZE = 8 * 1024**2
 
@@ -117,10 +121,29 @@ class OTAImageArtifactReader:
     def select_image_payload(
         self, _image_id: ImageIdentifier, _image_index: ImageIndex
     ) -> ImageManifest | None:
+        """The file-based payload identified by `_image_id`, as `ImageIndex.find_image`;
+        None also when the payload of that identifier is partition-based."""
         if _manifest_descriptor := _image_index.find_image(_image_id):
             return ImageManifest.parse_metafile(
                 self.read_blob_as_text(_manifest_descriptor.digest.digest_hex)
             )
+
+    def select_partition_image_payload(
+        self, _image_id: ImageIdentifier, _image_index: ImageIndex
+    ) -> PartitionImageManifest | None:
+        """The partition-based payload identified by `_image_id`, as
+        `ImageIndex.find_partition_image`."""
+        if _manifest_descriptor := _image_index.find_partition_image(_image_id):
+            return PartitionImageManifest.parse_metafile(
+                self.read_blob_as_text(_manifest_descriptor.digest.digest_hex)
+            )
+
+    def _get_sys_config(self, _descriptor: SysConfig.Descriptor | None):
+        if _descriptor is None:
+            return None
+        return SysConfig.parse_metafile(
+            self.read_blob_as_text(_descriptor.digest.digest_hex)
+        )
 
     def get_image_config(
         self, _image_manifest: ImageManifest
@@ -128,13 +151,15 @@ class OTAImageArtifactReader:
         _image_config = ImageConfig.parse_metafile(
             self.read_blob_as_text(_image_manifest.config.digest.digest_hex)
         )
+        return _image_config, self._get_sys_config(_image_config.sys_config)
 
-        if _image_config.sys_config:
-            _sys_config = SysConfig.parse_metafile(
-                self.read_blob_as_text(_image_config.sys_config.digest.digest_hex)
-            )
-            return _image_config, _sys_config
-        return _image_config, None
+    def get_partition_image_config(
+        self, _image_manifest: PartitionImageManifest
+    ) -> tuple[PartitionImageConfig, SysConfig | None]:
+        _image_config = PartitionImageConfig.parse_metafile(
+            self.read_blob_as_text(_image_manifest.config.digest.digest_hex)
+        )
+        return _image_config, self._get_sys_config(_image_config.sys_config)
 
     def get_file_table(self, _image_config: ImageConfig, _save_dst: Path) -> Path:
         _ft_descriptor = _image_config.file_table

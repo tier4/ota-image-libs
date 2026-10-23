@@ -21,6 +21,7 @@
 
 IMAGE_INDEX = "application/vnd.oci.image.index.v1+json"
 IMAGE_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
+OCI_EMPTY_JSON = "application/vnd.oci.empty.v1+json"  # the `{}` config of an artifact with none
 
 #
 # ------ OTA specific media types ------ #
@@ -34,6 +35,32 @@ OTA_IMAGE_RESOURCETABLE_ZSTD = "application/vnd.tier4.ota.file-based-ota-image.r
 OTA_IMAGE_CONFIG_JSON = "application/vnd.tier4.ota.file-based-ota-image.config.v1+json"
 SYS_CONFIG_YAML_BACKWARD_COMPATIBLE = "application/vnd.tier4.ota.file-based-ota-image.config.v1+yaml"
 SYS_CONFIG_YAML = "application/vnd.tier4.ota.sys-config.v1+yaml"
+
+#
+# ------ partition-based OTA image media types (spec/partition_image.md) ------ #
+#
+PARTITION_IMAGE_ARTIFACT = "application/vnd.tier4.ota.partition-based-ota-image.v1"
+PARTITION_IMAGE_CONFIG_JSON = "application/vnd.tier4.ota.partition-based-ota-image.config.v1+json"
+PARTITION_IMAGE_BLOB = "application/vnd.tier4.ota.partition-based-ota-image.partition.v1"
+PARTITION_IMAGE_BLOB_ZSTD = "application/vnd.tier4.ota.partition-based-ota-image.partition.v1+zstd"
+PARTITION_IMAGE_BOOT_FILES_TAR = "application/vnd.tier4.ota.partition-based-ota-image.boot-files.v1.tar"
+PARTITION_IMAGE_DELTA = "application/vnd.tier4.ota.partition-based-ota-image.partition-delta.v1.tar"
+PARTITION_IMAGE_VENDOR_PACKAGE = "application/vnd.tier4.ota.partition-based-ota-image.vendor-package.v1"
+PARTITION_IMAGE_VENDOR_PACKAGE_ZSTD = "application/vnd.tier4.ota.partition-based-ota-image.vendor-package.v1+zstd"
+PARTITION_IMAGE_DATA_IMAGE = "application/vnd.tier4.ota.partition-based-ota-image.data-image.v1"
+PARTITION_IMAGE_DATA_IMAGE_ZSTD = "application/vnd.tier4.ota.partition-based-ota-image.data-image.v1+zstd"
+PARTITION_IMAGE_FIRMWARE_PACKAGE = "application/vnd.tier4.ota.partition-based-ota-image.firmware-package.v1"
+PARTITION_IMAGE_FIRMWARE_PACKAGE_ZSTD = "application/vnd.tier4.ota.partition-based-ota-image.firmware-package.v1+zstd"
+
+#
+# ------ update agent release package media types (v1/update_agent_package) ------ #
+#
+UPDATE_AGENT_PACKAGE_ARTIFACT = "application/vnd.tier4.ota.update-agent.release-package.v1"
+UPDATE_AGENT_PACKAGE_MANIFEST = "application/vnd.tier4.ota.update-agent.release-package.manifest.v1+json"
+UPDATE_AGENT_BUNDLE = "application/vnd.tier4.ota.update-agent.bundle.v1"
+# The `type` annotation of a bundle; a consumer takes only a type it implements.
+UPDATE_AGENT_TYPE_OTACLIENT = "tier4.otaclient.squashfs.v1"  # otaclient's squashfs release
+UPDATE_AGENT_TYPE_PARTITION_AGENT = "tier4.ota.agent.v1"  # the partition-based payload agent, a .tar.gz
 
 #
 # ------ OTAClient Package media types ------ #
