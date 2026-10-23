@@ -76,10 +76,15 @@ class TestIndexJWTUtils:
         """Test extracting cert chain from JWT without x5c header."""
         # A simple JWT without x5c header (header.payload.signature format)
         # Header: {"alg": "ES256", "typ": "JWT"}
-        # This is just for testing error handling
-        fake_jwt = (
-            "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZXN0IjoidGVzdCJ9.fake_signature"
+        # This is just for testing error handling; the segments are valid base64url,
+        # since PyJWT 2.15 refuses a malformed one before returning the header.
+        header = {"alg": "ES256", "typ": "JWT"}
+        header_b64 = (
+            base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip("=")
         )
+        payload_b64 = base64.urlsafe_b64encode(b'{"test": "test"}').decode().rstrip("=")
+        sig_b64 = base64.urlsafe_b64encode(b"fake_signature").decode().rstrip("=")
+        fake_jwt = f"{header_b64}.{payload_b64}.{sig_b64}"
 
         with pytest.raises(ValueError):
             get_index_jwt_sign_cert_chain(fake_jwt)
@@ -93,7 +98,8 @@ class TestIndexJWTUtils:
             base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip("=")
         )
         payload_b64 = base64.urlsafe_b64encode(b'{"test": "test"}').decode().rstrip("=")
-        fake_jwt = f"{header_b64}.{payload_b64}.fake_signature"
+        sig_b64 = base64.urlsafe_b64encode(b"fake_signature").decode().rstrip("=")
+        fake_jwt = f"{header_b64}.{payload_b64}.{sig_b64}"
 
         with pytest.raises(ValueError):
             get_index_jwt_sign_cert_chain(fake_jwt)

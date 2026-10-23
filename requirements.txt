@@ -4,9 +4,9 @@ annotated-types==0.7.0
     # via pydantic
 cffi==2.0.0 ; platform_python_implementation != 'PyPy'
     # via cryptography
-cryptography==48.0.1
+cryptography==50.0.2
     # via ota-image-libs
-msgpack==1.2.1
+msgpack==1.2.3
     # via ota-image-libs
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
@@ -16,13 +16,13 @@ pydantic==2.13.4
     #   simple-sqlite3-orm
 pydantic-core==2.46.4
     # via pydantic
-pyjwt==2.13.0
+pyjwt==2.15.1
     # via ota-image-libs
 pyyaml==6.0.3
     # via ota-image-libs
 simple-sqlite3-orm==0.13.0
     # via ota-image-libs
-typing-extensions==4.15.0
+typing-extensions==4.16.0
     # via
     #   cryptography
     #   ota-image-libs
