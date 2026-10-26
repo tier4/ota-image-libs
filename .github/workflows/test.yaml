@@ -56,5 +56,7 @@ jobs:
       - name: SonarCloud Scan
         if: matrix.python-version == '3.13'
         uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6.0.0
+        # best-effort: a missing or invalid SONAR_TOKEN must not fail CI
+        continue-on-error: true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
