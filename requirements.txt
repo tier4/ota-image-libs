@@ -20,7 +20,7 @@ pyjwt==2.15.1
     # via ota-image-libs
 pyyaml==6.0.3
     # via ota-image-libs
-simple-sqlite3-orm==0.13.0
+simple-sqlite3-orm @ https://github.com/tier4/simple-sqlite3-orm/releases/download/v0.13.2/simple_sqlite3_orm-0.13.2-py3-none-any.whl
     # via ota-image-libs
 typing-extensions==4.16.0
     # via

@@ -30,7 +30,7 @@ dependencies = [
   "pydantic>=2.10,<3",
   "pyjwt>=2.15.0,<3",
   "pyyaml>=6.0.1,<7",
-  "simple-sqlite3-orm>=0.12,<1",
+  "simple-sqlite3-orm@https://github.com/tier4/simple-sqlite3-orm/releases/download/v0.13.2/simple_sqlite3_orm-0.13.2-py3-none-any.whl#sha256:fce73a2ba338a76388a12508c4682c4f8ecc9376ebcbc880e05e63edfa83d226",
   "typing-extensions>=4.6.3",
   "zstandard>=0.22,<0.26",
 ]
@@ -51,6 +51,9 @@ dev = [
 
 [tool.uv]
 required-version = ">=0.5.0,<1"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.version]
 source = "vcs"
