@@ -14,7 +14,7 @@ pydantic==2.13.4
     # via
     #   ota-image-libs
     #   simple-sqlite3-orm
-pydantic-core==2.46.4
+pydantic-core==2.50.1
     # via pydantic
 pyjwt==2.15.1
     # via ota-image-libs
