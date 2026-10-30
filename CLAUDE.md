@@ -153,11 +153,11 @@ Three GitHub Actions workflows live under `.github/workflows/`:
 - Builds the wheel using the minimum supported Python version (read from `.python-version`), uploads it as an artifact, calculates checksums, and attaches all `dist/*` files to the GitHub release.
 - Builds the `ota-image-tools` binary with PyInstaller in `ubuntu:22.04`, the oldest supported Ubuntu, so that it runs on 22.04 and 24.04.
 
-**`gen_requirements_txt.yaml` — Requirements sync**
+**`sync_lockfile.yml` — Requirements sync**
 
 - For syncing uv.lock from pyproject.toml, and one-way exporting `requirements.txt` from uv.lock for snyk scan.
-- Triggers on PRs to `main` when `pyproject.toml` changes, and manual dispatch.
-- Re-generates `requirements.txt` from `pyproject.toml` via `.github/tools/gen_requirements_txt.py` and auto-commits the update to the PR branch if changed.
+- Triggers on PRs to `main` / `v*` that touch `pyproject.toml`, `uv.lock` or `requirements.txt` (Dependabot PRs included), and manual dispatch.
+- Runs `uv lock` and `uv export`, and commits any change to the PR branch through the GraphQL API (signed by GitHub, `GITHUB_TOKEN` only).
 
 ## Code Style
 
