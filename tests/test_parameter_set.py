@@ -203,7 +203,9 @@ class TestSlots:
             _raw = json.loads(
                 zf.read(f"{RESOURCE_DIR}/{_manifest.config.digest.digest_hex}")
             )
-        assert ImageConfig.model_validate_json(json.dumps(_raw)).parameter_slots == []
+        _plain = ImageConfig.model_validate_json(json.dumps(_raw))
+        assert _plain.parameter_slots is None
+        assert "parameter_slots" not in json.loads(_plain.export_metafile())
 
         _raw["parameter_slots"] = [_s.model_dump() for _s in BASE_SLOTS]
         _config = ImageConfig.parse_metafile(json.dumps(_raw))

@@ -560,12 +560,12 @@ class PartitionImageConfig(MetaFileBase):
     package: Union[VendorPackageDescriptor, VendorPackageZstdDescriptor, None] = None
     sys_config: Union[SysConfig.Descriptor, None] = None
     labels: Annotations
-    parameter_slots: List[ParameterSlot] = Field(default_factory=list)
+    parameter_slots: Union[List[ParameterSlot], None] = None
     """The directories a parameter set may replace (spec/parameter_set.md)."""
 
     @model_validator(mode="after")
     def _well_formed(self) -> Self:
-        check_slots_disjoint("partition image config", self.parameter_slots)
+        check_slots_disjoint("partition image config", self.parameter_slots or [])
         if not self.image_version.strip():
             raise ValueError("image_version must not be empty")
         if not self.partitions:

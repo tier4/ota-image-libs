@@ -218,7 +218,7 @@ def deploy_image_cmd(args: Namespace) -> None:  # pragma: no cover
                     parameter_image=Path(args.parameter_image),
                     image_id=image_id,
                     base_manifest_digest=_base_descriptor.digest,
-                    base_slots=image_config.parameter_slots,
+                    base_slots=image_config.parameter_slots or [],
                     tmp_dir=tmpdir,
                 )
             except (ParameterSetNotApplicable, ParameterLayerInvalid) as e:
