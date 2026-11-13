@@ -68,6 +68,11 @@ PARTITION_IMAGE_VENDOR_PACKAGE_FORMAT = (
 PARTITION_IMAGE_FIRMWARE_FORMAT = "vnd.tier4.ota.partition-image.firmware.format"
 
 #
+# ------ parameter set related ------ #
+#
+PARAMETER_SET_VERSION = "vnd.tier4.ota.parameter-set.version"
+
+#
 # ------ special hardware related ------ #
 #
 NVIDIA_JETSON_BSP_VER = "vnd.nvidia.jetson.bsp_ver"

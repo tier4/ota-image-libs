@@ -47,6 +47,7 @@ from ota_image_libs.v1.annotation_keys import (
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, ImageManifest
 from ota_image_libs.v1.media_types import IMAGE_INDEX
 from ota_image_libs.v1.otaclient_package.schema import OTAClientPackageManifest
+from ota_image_libs.v1.parameter_set.schema import ParameterSetManifest
 from ota_image_libs.v1.partition_image.schema import PartitionImageManifest
 from ota_image_libs.v1.resource_table.schema import (
     ResourceTableDescriptor,
@@ -54,11 +55,17 @@ from ota_image_libs.v1.resource_table.schema import (
 )
 from ota_image_libs.v1.update_agent_package.schema import UpdateAgentPackageManifest
 
-# The two kinds of OTA image payload an index can list; the tuple is for isinstance.
-ImagePayloadDescriptor = ImageManifest.Descriptor | PartitionImageManifest.Descriptor
+# The kinds of OTA image payload an index can list; the tuple is for isinstance.
+# A parameter set (spec/parameter_set.md) is an ECU's payload in a parameter image.
+ImagePayloadDescriptor = (
+    ImageManifest.Descriptor
+    | PartitionImageManifest.Descriptor
+    | ParameterSetManifest.Descriptor
+)
 IMAGE_PAYLOAD_DESCRIPTORS = (
     ImageManifest.Descriptor,
     PartitionImageManifest.Descriptor,
+    ParameterSetManifest.Descriptor,
 )
 
 
@@ -98,6 +105,7 @@ class ImageIndex(MetaFileBase):
     manifests: list[
         ImageManifest.Descriptor
         | PartitionImageManifest.Descriptor
+        | ParameterSetManifest.Descriptor
         | OTAClientPackageManifest.Descriptor
         | UpdateAgentPackageManifest.Descriptor
         | ResourceTableDescriptor
@@ -176,6 +184,14 @@ class ImageIndex(MetaFileBase):
         """Find one partition-based image payload from the manifests list."""
         _entry = self.find_image_payload(_id)
         if isinstance(_entry, PartitionImageManifest.Descriptor):
+            return _entry
+
+    def find_parameter_set(
+        self, _id: ImageIdentifier
+    ) -> ParameterSetManifest.Descriptor | None:
+        """Find one parameter set from the manifests list."""
+        _entry = self.find_image_payload(_id)
+        if isinstance(_entry, ParameterSetManifest.Descriptor):
             return _entry
 
     def find_otaclient_package(self) -> list[OTAClientPackageManifest.Descriptor]:

@@ -29,6 +29,10 @@ from ota_image_libs.v1.image_config.schema import ImageConfig
 from ota_image_libs.v1.image_config.sys_config import SysConfig
 from ota_image_libs.v1.image_index.schema import ImageIndex
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, ImageManifest
+from ota_image_libs.v1.parameter_set.schema import (
+    ParameterSetConfig,
+    ParameterSetManifest,
+)
 from ota_image_libs.v1.partition_image.schema import (
     PartitionImageConfig,
     PartitionImageManifest,
@@ -137,6 +141,26 @@ class OTAImageArtifactReader:
             return PartitionImageManifest.parse_metafile(
                 self.read_blob_as_text(_manifest_descriptor.digest.digest_hex)
             )
+
+    def select_parameter_set_payload(
+        self, _image_id: ImageIdentifier, _image_index: ImageIndex
+    ) -> ParameterSetManifest | None:
+        """The parameter set identified by `_image_id`, as
+        `ImageIndex.find_parameter_set`."""
+        if _manifest_descriptor := _image_index.find_parameter_set(_image_id):
+            return ParameterSetManifest.parse_metafile(
+                self.read_blob_as_text(_manifest_descriptor.digest.digest_hex)
+            )
+
+    def get_parameter_set_config(
+        self, _manifest: ParameterSetManifest
+    ) -> ParameterSetConfig:
+        """The set's config, checked against its manifest."""
+        _config = ParameterSetConfig.parse_metafile(
+            self.read_blob_as_text(_manifest.config.digest.digest_hex)
+        )
+        _manifest.check_config(_config)
+        return _config
 
     def _get_sys_config(self, _descriptor: SysConfig.Descriptor | None):
         if _descriptor is None:

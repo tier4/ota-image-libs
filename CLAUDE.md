@@ -78,6 +78,7 @@ All schemas required for OTA image specification v1 are as follows:
 | `file_table/` | SQLite-backed file metadata for each file in an OTA image |
 | `resource_table/` | SQLite-backed blob/resource metadata |
 | `index_jwt/` | JWT signing/verification schema and utilities |
+| `parameter_set/` | `ParameterSetManifest`, `ParameterSetConfig`, parameter slots, and the layer writer/reader of a parameter set |
 | `otaclient_package/` | OTAClient release package format |
 | `partition_image/` | `PartitionImageManifest`, `PartitionImageConfig` — the partition-based payload (whole partition images, data images, firmware, deltas), see `spec/partition_image.md` |
 | `update_agent_package/` | `UpdateAgentPackageManifest` — the update agent release package, one entry carrying every agent the image ships, see `spec/update_agent_package.md` |

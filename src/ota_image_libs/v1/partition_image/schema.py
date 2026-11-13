@@ -75,6 +75,7 @@ from ota_image_libs.v1.media_types import (
     PARTITION_IMAGE_VENDOR_PACKAGE,
     PARTITION_IMAGE_VENDOR_PACKAGE_ZSTD,
 )
+from ota_image_libs.v1.parameter_set.slots import ParameterSlot, check_slots_disjoint
 
 DELTA_ALGORITHM_BLOCK_DIFF = "block-diff"  # ota_image_tools.libs.block_diff
 
@@ -559,9 +560,12 @@ class PartitionImageConfig(MetaFileBase):
     package: Union[VendorPackageDescriptor, VendorPackageZstdDescriptor, None] = None
     sys_config: Union[SysConfig.Descriptor, None] = None
     labels: Annotations
+    parameter_slots: List[ParameterSlot] = Field(default_factory=list)
+    """The directories a parameter set may replace (spec/parameter_set.md)."""
 
     @model_validator(mode="after")
     def _well_formed(self) -> Self:
+        check_slots_disjoint("partition image config", self.parameter_slots)
         if not self.image_version.strip():
             raise ValueError("image_version must not be empty")
         if not self.partitions:

@@ -58,6 +58,11 @@ Each [image manifest](image_manifest.md) points to exactly one image config.
 
     This REQUIRED field specifies an OCI descriptor that points to the [file_table](file_table.md) of the original system rootfs image this image_config is based on.
 
+- **`parameter_slots`** *array of objects*
+
+    This OPTIONAL field lists the directories of this payload's rootfs that a [parameter set](parameter_set.md#parameter-slots) may replace, each with how a change to it takes effect.
+    A consumer that does not know it ignores it.
+
 - **`labels`** *string-string map*
 
     This REQUIRED field specifies metadata and statistics of the original system rootfs image.

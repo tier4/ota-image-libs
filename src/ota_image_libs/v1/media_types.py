@@ -22,6 +22,7 @@
 IMAGE_INDEX = "application/vnd.oci.image.index.v1+json"
 IMAGE_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 OCI_EMPTY_JSON = "application/vnd.oci.empty.v1+json"  # the `{}` config of an artifact with none
+OCI_LAYER_TAR_ZSTD = "application/vnd.oci.image.layer.v1.tar+zstd"
 
 #
 # ------ OTA specific media types ------ #
@@ -51,6 +52,12 @@ PARTITION_IMAGE_DATA_IMAGE = "application/vnd.tier4.ota.partition-based-ota-imag
 PARTITION_IMAGE_DATA_IMAGE_ZSTD = "application/vnd.tier4.ota.partition-based-ota-image.data-image.v1+zstd"
 PARTITION_IMAGE_FIRMWARE_PACKAGE = "application/vnd.tier4.ota.partition-based-ota-image.firmware-package.v1"
 PARTITION_IMAGE_FIRMWARE_PACKAGE_ZSTD = "application/vnd.tier4.ota.partition-based-ota-image.firmware-package.v1+zstd"
+
+#
+# ------ parameter set media types (spec/parameter_set.md) ------ #
+#
+PARAMETER_SET_ARTIFACT = "application/vnd.tier4.ota.parameter-set.v1"
+PARAMETER_SET_CONFIG_JSON = "application/vnd.tier4.ota.parameter-set.config.v1+json"
 
 #
 # ------ update agent release package media types (v1/update_agent_package) ------ #

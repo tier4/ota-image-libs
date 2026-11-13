@@ -14,7 +14,8 @@
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, model_validator
+from typing_extensions import Self
 
 from ota_image_libs import DIGEST_ALGORITHM
 from ota_image_libs.common.metafile_base import MetaFileBase, MetaFileDescriptor
@@ -38,6 +39,7 @@ from ota_image_libs.v1.file_table.schema import (
     ZstdCompressedFileTableDescriptor,
 )
 from ota_image_libs.v1.media_types import OTA_IMAGE_CONFIG_JSON
+from ota_image_libs.v1.parameter_set.slots import ParameterSlot, check_slots_disjoint
 
 from .sys_config import SysConfig
 
@@ -76,6 +78,13 @@ class ImageConfig(MetaFileBase):
     sys_config: SysConfig.Descriptor | None = None
     file_table: FileTableDescriptor | ZstdCompressedFileTableDescriptor
     labels: Annotations
+    parameter_slots: list[ParameterSlot] = Field(default_factory=list)
+    """The directories a parameter set may replace (spec/parameter_set.md)."""
+
+    @model_validator(mode="after")
+    def _parameter_slots_disjoint(self) -> Self:
+        check_slots_disjoint("image config", self.parameter_slots)
+        return self
 
     @property
     def sys_image_size(self) -> int | None:
