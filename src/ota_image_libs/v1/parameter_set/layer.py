@@ -152,6 +152,12 @@ def _write_slot(
     tar: tarfile.TarFile, root: Path, slot: ParameterSlotRef, info: ParameterLayerInfo
 ) -> None:
     _slot_dir = root / slot.relpath
+    if os.path.realpath(_slot_dir) != os.path.join(
+        os.path.realpath(root), slot.relpath
+    ):
+        raise ParameterLayerInvalid(
+            f"slot {slot.name!r}: {_slot_dir} is behind a symbolic link"
+        )
     _st = os.lstat(_slot_dir)
     if not stat.S_ISDIR(_st.st_mode):
         raise ParameterLayerInvalid(

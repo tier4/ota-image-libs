@@ -17,6 +17,7 @@ A base image declares the directories a set may replace in its config: `paramete
 The field is OPTIONAL and a consumer that does not know it ignores it.
 
 - **`parameter_slots`** *array of objects* — OPTIONAL, default empty. Names unique, and no slot's `path` is inside, or the same as, another's.
+  No slot is over what a consumer reads for itself (`/boot`, `/etc/fstab`, `/opt/ota`, `/usr/share/ota`: the same path, inside, or containing it), and no slot's `apply` is inside a slot: a set carries files only, and what runs is the base's.
   - **`name`** *string* — REQUIRED. 1 to 64 letters, digits, `_`, `.` or `-`, starting with a letter or digit.
   - **`path`** *string* — REQUIRED. The directory the slot is: absolute, normalized, not `/`. The base ships the slot's default contents there, which is what the slot holds when no set fills it.
   - **`apply`** *string* — REQUIRED. How a change to the slot takes effect: the absolute path of an executable in the base that the consumer runs once the slot's new contents are in place, or `reboot`.
@@ -35,7 +36,7 @@ The field is OPTIONAL and a consumer that does not know it ignores it.
 ## Parameter Image
 
 A parameter image is an OTA image like any other — `index.json`, `index.jwt`, the blob storage and the [artifact](ota_image_distribution.md) — whose [image index](image_index.md) lists a parameter set as each ECU's payload, identified by `ecu_id` and `ota_release_key`.
-It carries no file table and no resource table.
+It carries no file table and no resource table, and only parameter sets: an index MUST NOT list a parameter set beside a base payload.
 
 A release made of a parameter image names every ECU: an ECU that has no slot, or whose parameters this release does not change, gets the [empty set](#empty-set) or the same set again, not nothing.
 
@@ -83,7 +84,7 @@ Media type: `application/vnd.tier4.ota.parameter-set.config.v1+json`
 - **`description`**, **`created`** *string* — OPTIONAL.
 - **`slots`** *array of objects* — OPTIONAL, default empty. The slots the set fills, each `{name, path}` as the base declares it; names unique, paths disjoint.
 - **`diff_ids`** *array of strings* — REQUIRED with a slot, one `sha256:…` per layer: the digest of the layer's uncompressed tar, as an OCI image config's `rootfs.diff_ids`. Empty for an empty set.
-- **`files`** *array of objects* — OPTIONAL. The set's regular files, each `{path, size, digest}` with `path` relative to `/` and under one of `slots`, for inspection; the layer is what is applied.
+- **`files`** *array of objects* — OPTIONAL. The set's regular files, each `{path, size, digest}` with `path` relative to `/` and under one of `slots`. When present it lists exactly the regular files of the layer, and a consumer MUST refuse a set whose `files` disagree with its layer; the layer is what is applied.
 
 A consumer MUST refuse a config whose `version` differs from the manifest's, or which fills a slot while the manifest carries the empty descriptor, or the other way round.
 
@@ -115,12 +116,15 @@ A consumer:
 1. Verifies the parameter image's `index.jwt` and the chain from it to the set's manifest, config and layer, as for any OTA image.
 2. Refuses a set whose `subject.digest` is not the digest of the manifest of the base payload it runs, or that fills a slot the base does not declare at the same `path`.
 3. Stores the set where it survives a restart of the consumer and a reboot of the same base, and never in the standby slot.
-4. Unpacks the layer outside the running rootfs and checks it against the config's `diff_ids` (and the layer descriptor's digest), then lays each slot over the base without writing the running rootfs — a read-only bind mount of the unpacked directory, or an overlay whose upper directory is opaque.
-5. Runs the `apply` of each slot whose contents changed, or reboots for one whose `apply` is `reboot`.
+4. Unpacks the layer into a place of its own and checks it against the config's `diff_ids` (and the layer descriptor's digest), then lays each slot over the base without writing the base's files — a read-only bind mount of the unpacked directory, or an overlay whose upper directory is opaque.
+   Its unpacked copy and what mounts it at boot (a managed block of `/etc/fstab`, say) are the consumer's own, and may live in the running slot when that slot is writable; the files under the slots' paths are never written.
+5. Runs the `apply` of each slot whose contents changed (a slot's files, by path and digest, differ from what it held), or reboots for one whose `apply` is `reboot`; a slot whose contents are the same is not applied again.
    When placing a slot or an `apply` fails, it restores the previous state, runs the `apply` again and reports the failure.
 6. On a later boot of the same base, lays the stored set again before what reads the parameters starts, and falls back to the base's defaults if the set no longer verifies.
 
 After a full update to another base, a stored set is not applied: its `subject` no longer matches, and the ECU runs with the new base's defaults.
+
+A consumer whose layout cannot take a parameter set refuses the ECU's set, an empty one included, without changing anything: a release that names such an ECU fails there, so such an ECU is given base images only.
 
 ## Compatibility
 

@@ -75,7 +75,7 @@ from ota_image_libs.v1.media_types import (
     PARTITION_IMAGE_VENDOR_PACKAGE,
     PARTITION_IMAGE_VENDOR_PACKAGE_ZSTD,
 )
-from ota_image_libs.v1.parameter_set.slots import ParameterSlot, check_slots_disjoint
+from ota_image_libs.v1.parameter_set.slots import ParameterSlot, check_base_slots
 
 DELTA_ALGORITHM_BLOCK_DIFF = "block-diff"  # ota_image_tools.libs.block_diff
 
@@ -565,7 +565,7 @@ class PartitionImageConfig(MetaFileBase):
 
     @model_validator(mode="after")
     def _well_formed(self) -> Self:
-        check_slots_disjoint("partition image config", self.parameter_slots or [])
+        check_base_slots("partition image config", self.parameter_slots or [])
         if not self.image_version.strip():
             raise ValueError("image_version must not be empty")
         if not self.partitions:

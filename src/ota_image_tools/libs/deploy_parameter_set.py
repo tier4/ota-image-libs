@@ -22,6 +22,7 @@ and what was tested is told apart from what runs by the two manifests' digests.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from pathlib import Path
 
@@ -94,9 +95,16 @@ def overlay_parameter_set(
                 diff_id=_config.diff_ids[0],
             )
 
+    _root = rootfs_dir.resolve()
     for _slot in _filled:
         _dst = rootfs_dir / _slot.relpath
-        if _dst.is_symlink() or (_dst.exists() and not _dst.is_dir()):
+        # resolved here, not in the tree's root: a link on the way would lead out of
+        #   the tree, onto the machine this runs on
+        if Path(os.path.realpath(_dst)) != _root / _slot.relpath:
+            raise ParameterSetNotApplicable(
+                f"slot {_slot.name!r}: {_dst} is behind a symbolic link"
+            )
+        if _dst.exists() and not _dst.is_dir():
             raise ParameterSetNotApplicable(
                 f"slot {_slot.name!r}: {_dst} is not a directory"
             )

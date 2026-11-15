@@ -90,6 +90,7 @@ Within each module, besides schemas, utils for operating the metadata are also a
 Used by the CLI commands and by other tools (the USB installer, the flash helper, the update agent) that depend on this package.
 
 - **`deploy_image.py`** — Deploys a file-based payload into a rootfs directory.
+- **`deploy_parameter_set.py`** — Lays a parameter set over a deployed base tree (`deploy-image --parameter-image`), as a device applies it.
 - **`deploy_partition_image.py`** — Writes a partition-based payload onto block devices: streams an image (raw or `+zstd`) to a partition hashing on the way, applies a block-diff delta, checks dm-verity. Standard library only, plus the `zstd` and `veritysetup` binaries, so that a consumer without the `zstandard` module can use it.
 - **`block_diff.py`** — The partition delta format: encoder (needs `zstandard`), reader and reconstruction (standard library).
 - **`bootimg.py`** — Packs and reads the Android boot image (version 0) an L4T kernel partition holds, the kernel command line in its 512-byte field. Standard library only.
@@ -133,6 +134,7 @@ Consult these when working on schemas or adding new features rather than reverse
 - `image_spec.md` — Overall OTA image specification overview
 - `image_index.md`, `image_manifest.md`, `image_config.md`, `sys_config.md` — Per-component schemas
 - `partition_image.md` — Partition-based payload, its config, data images, firmware and the delta format
+- `parameter_set.md` — Parameter set: a base's parameter slots delivered in a parameter image, the layer, and how a consumer applies it
 - `file_table.md`, `resource_table.md` — SQLite database schemas
 - `annotations.md` — Standard annotation key definitions
 - `index_jwt.md` — JWT signing specification

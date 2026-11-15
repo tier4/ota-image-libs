@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, OTAReleaseKey
+from ota_image_libs.v1.parameter_set.schema import ParameterSetManifest
 from ota_image_libs.v1.partition_image.schema import PartitionImageManifest
 from ota_image_libs.v1.utils import check_if_valid_ota_image
 from ota_image_tools._utils import exit_with_err_msg, ppformat_json_string
@@ -106,6 +107,8 @@ def _lookup_image_from_artifact(
                 image_config, _ = artifact_reader.get_partition_image_config(
                     image_manifest
                 )
+            elif isinstance(image_manifest, ParameterSetManifest):
+                image_config = artifact_reader.get_parameter_set_config(image_manifest)
             else:
                 image_config, _ = artifact_reader.get_image_config(image_manifest)
             logger.info("image_config: ")

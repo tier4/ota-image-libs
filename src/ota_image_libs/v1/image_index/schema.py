@@ -164,7 +164,8 @@ class ImageIndex(MetaFileBase):
         ]
 
     def find_image_payload(self, _id: ImageIdentifier) -> ImagePayloadDescriptor | None:
-        """Find one image payload, of either kind, from the manifests list."""
+        """Find one image payload, of any kind (file-based, partition-based, parameter
+        set), from the manifests list."""
         for _entry in self.manifests:
             if (
                 isinstance(_entry, IMAGE_PAYLOAD_DESCRIPTORS)
@@ -237,9 +238,22 @@ class ImageIndex(MetaFileBase):
         self.annotations.signed_at = int(time.time())
 
     def add_image(self, manifest_descriptor: ImagePayloadDescriptor) -> None:
-        """Add a manifest of an image payload, of either kind, into the image index."""
+        """Add a manifest of an image payload, of any kind, into the image index.
+
+        A parameter image carries parameter sets only: a set is not added beside a
+        base payload, nor a base payload beside a set (spec/parameter_set.md).
+        """
         if self.image_finalized or self.image_signed:
             raise ValueError("Cannot add manifest to a finalized image.")
+        _is_set = isinstance(manifest_descriptor, ParameterSetManifest.Descriptor)
+        for _entry in self.manifests:
+            if isinstance(_entry, IMAGE_PAYLOAD_DESCRIPTORS) and (
+                isinstance(_entry, ParameterSetManifest.Descriptor) != _is_set
+            ):
+                raise ValueError(
+                    "a parameter image carries parameter sets only: parameter sets and "
+                    "base payloads do not go into one image"
+                )
 
         _image_id = manifest_descriptor.image_identifier
         if self.find_image_payload(_image_id) is not None:

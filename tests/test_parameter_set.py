@@ -18,6 +18,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import shutil
 import stat
 import tarfile
 from hashlib import sha256
@@ -70,9 +71,11 @@ from ota_image_libs.v1.parameter_set.schema import (
 from ota_image_libs.v1.parameter_set.slots import (
     ParameterSlot,
     ParameterSlotRef,
+    check_base_slots,
     check_slots_disjoint,
 )
 from ota_image_libs.v1.update_agent_package.schema import EMPTY_JSON
+from ota_image_tools.cmds.list_image import _list_image_from_artifact, _render_output
 from ota_image_tools.libs.deploy_parameter_set import (
     ParameterSetNotApplicable,
     overlay_parameter_set,
@@ -189,6 +192,44 @@ class TestSlots:
             check_slots_disjoint(
                 "t", [SLOT, ParameterSlotRef(name="same", path=SLOT_PATH)]
             )
+
+    @pytest.mark.parametrize(
+        "path",
+        (
+            "/opt/ota",
+            "/opt/ota/client",
+            "/boot/grub",
+            "/usr/share",
+            "/usr/share/ota",
+            "/etc",
+        ),
+    )
+    def test_a_base_slot_is_not_over_what_the_consumer_reads(self, path):
+        with pytest.raises(ValueError, match="reads for itself"):
+            check_base_slots("t", [ParameterSlot(name="s", path=path, apply="reboot")])
+
+    def test_a_base_slots_apply_is_not_inside_a_slot(self):
+        """A set carries files only: it could replace an apply inside a slot."""
+        with pytest.raises(ValueError, match="which a set replaces"):
+            check_base_slots(
+                "t",
+                [
+                    ParameterSlot(
+                        name="s", path=SLOT_PATH, apply=f"{SLOT_PATH}/apply.sh"
+                    )
+                ],
+            )
+        with pytest.raises(ValueError, match="which a set replaces"):
+            check_base_slots(
+                "t",
+                [
+                    ParameterSlot(
+                        name="a", path=SLOT_PATH, apply=f"{OTHER_SLOT_PATH}/x"
+                    ),
+                    ParameterSlot(name="b", path=OTHER_SLOT_PATH, apply="reboot"),
+                ],
+            )
+        check_base_slots("t", BASE_SLOTS)
 
     def test_the_image_config_declares_them_and_an_old_one_has_none(self):
         _fixture = Path(__file__).parent / "data" / "ota-image.zip"
@@ -429,6 +470,31 @@ class TestIndex:
         _exported = json.loads(_index.export_metafile())
         assert _exported["manifests"][0]["artifactType"] == PARAMETER_SET_ARTIFACT
 
+    def test_a_parameter_image_carries_parameter_sets_only(self):
+        _index = ImageIndex.parse_metafile(json.dumps(self.index_dict(self.entry())))
+        _base = ImageManifest.Descriptor.model_validate(
+            {
+                "mediaType": IMAGE_MANIFEST,
+                "digest": "sha256:" + "6" * 64,
+                "size": 1,
+                "annotations": {PLATFORM_ECU: "perception", OTA_RELEASE_KEY: "dev"},
+            }
+        )
+        with pytest.raises(ValueError, match="parameter sets only"):
+            _index.add_image(_base)
+
+        _raw = self.entry()
+        del _raw["artifactType"]
+        _base_index = ImageIndex.parse_metafile(json.dumps(self.index_dict(_raw)))
+        _set = ParameterSetManifest.Descriptor.model_validate(
+            {
+                **self.entry(),
+                "annotations": {**MANIFEST_ANNOTATIONS, PLATFORM_ECU: "perception"},
+            }
+        )
+        with pytest.raises(ValueError, match="parameter sets only"):
+            _base_index.add_image(_set)
+
     def test_an_entry_without_artifact_type_is_a_file_based_payload(self):
         _raw = self.entry()
         del _raw["artifactType"]
@@ -478,6 +544,38 @@ class TestLayer:
             f"{SLOT.relpath}/{OPAQUE_WHITEOUT}",
         ]
         assert {(_m.uid, _m.gid, _m.mtime) for _m in _members} == {(0, 0, 0)}
+
+    def test_the_order_slots_are_named_in_does_not_change_the_layer(
+        self, tmp_path: Path
+    ):
+        _root = make_tree(make_tree(tmp_path / "tree"), OTHER_SLOT)
+        assert (
+            layer_bytes(_root, (OTHER_SLOT, SLOT))[0]
+            == layer_bytes(_root, (SLOT, OTHER_SLOT))[0]
+        )
+
+    def test_the_writer_refuses_a_slot_behind_a_link(self, tmp_path: Path):
+        """The tree's link would be followed on the build machine."""
+        _elsewhere = make_tree(tmp_path / "elsewhere")
+        _root = tmp_path / "tree"
+        _root.mkdir()
+        (_root / "opt").symlink_to(_elsewhere / "opt")
+        with pytest.raises(ParameterLayerInvalid, match="behind a symbolic link"):
+            layer_bytes(_root)
+
+    def test_the_reader_does_not_write_through_a_link_in_the_target(
+        self, tmp_path: Path
+    ):
+        _blob, _ = layer_bytes(make_tree(tmp_path / "tree"))
+        _out = tmp_path / "out"
+        _victim = tmp_path / "victim"
+        _victim.write_text("untouched\n")
+        _readme = _out / SLOT.relpath / "README"
+        _readme.parent.mkdir(parents=True)
+        _readme.symlink_to(_victim)
+        with pytest.raises(OSError):
+            read_parameter_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
+        assert _victim.read_text() == "untouched\n"
 
     def test_two_slots_in_one_layer(self, tmp_path: Path):
         _root = make_tree(make_tree(tmp_path / "tree"), OTHER_SLOT)
@@ -597,7 +695,13 @@ class TestLayer:
         _out.mkdir()
         with pytest.raises(ParameterLayerInvalid):
             read_parameter_layer(io.BytesIO(zstd_tar(members)), [SLOT], extract_to=_out)
-        assert not (tmp_path / "etc").exists() and not (tmp_path.parent / "x").exists()
+        # what came before the refused member may be there, for the caller to
+        #   discard; nothing is written outside the slot
+        _written = [
+            _p.relative_to(_out).as_posix() for _p in _out.rglob("*") if _p.is_file()
+        ]
+        assert all(_w.startswith(SLOT.relpath + "/") for _w in _written), _written
+        assert not (tmp_path / "etc").exists() and not (tmp_path / "x").exists()
 
     def test_a_layer_bigger_than_the_bound_is_refused(self, tmp_path: Path):
         _blob, _info = layer_bytes(make_tree(tmp_path / "tree"))
@@ -787,6 +891,25 @@ class TestOverlay:
                 base_manifest_digest=Sha256Digest("0" * 64),
             )
         assert (base_tree / SLOT.relpath / "only_in_the_base").exists()
+
+    def test_a_slot_behind_a_link_is_not_followed_out_of_the_tree(
+        self, tmp_path: Path, base_tree: Path
+    ):
+        _outside = tmp_path / "outside"
+        (_outside / "individual_params").mkdir(parents=True)
+        (_outside / "individual_params" / "keep").write_text("host file\n")
+        _slot = base_tree / SLOT.relpath
+        shutil.rmtree(_slot)
+        _slot.symlink_to(_outside / "individual_params")
+        _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))
+        with pytest.raises(ParameterSetNotApplicable, match="symbolic link"):
+            self.overlay(tmp_path, base_tree, _artifact)
+        assert (_outside / "individual_params" / "keep").read_text() == "host file\n"
+
+    def test_list_image_names_the_kind(self, tmp_path: Path):
+        _artifact = build_parameter_image(tmp_path, tree=None)
+        _listed = _list_image_from_artifact(_artifact)
+        assert "kind='parameter-set'" in _render_output(_listed)
 
     def test_another_ecu_has_no_set_here(self, tmp_path: Path, base_tree: Path):
         _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))

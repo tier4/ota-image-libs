@@ -39,7 +39,7 @@ from ota_image_libs.v1.file_table.schema import (
     ZstdCompressedFileTableDescriptor,
 )
 from ota_image_libs.v1.media_types import OTA_IMAGE_CONFIG_JSON
-from ota_image_libs.v1.parameter_set.slots import ParameterSlot, check_slots_disjoint
+from ota_image_libs.v1.parameter_set.slots import ParameterSlot, check_base_slots
 
 from .sys_config import SysConfig
 
@@ -85,7 +85,7 @@ class ImageConfig(MetaFileBase):
 
     @model_validator(mode="after")
     def _parameter_slots_disjoint(self) -> Self:
-        check_slots_disjoint("image config", self.parameter_slots or [])
+        check_base_slots("image config", self.parameter_slots or [])
         return self
 
     @property

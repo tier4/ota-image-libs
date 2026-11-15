@@ -105,3 +105,33 @@ def check_slots_disjoint(what: str, slots: Iterable[ParameterSlotRef]) -> None:
                     f"{what}: slot {_b.name!r} ({_b.path}) is inside or the same as "
                     f"slot {_a.name!r} ({_a.path})"
                 )
+
+
+RESERVED_PATHS = ("/boot", "/etc/fstab", "/opt/ota", "/usr/share/ota")
+"""What a consumer reads for itself, never a slot's: its boot files, the fstab that
+mounts the slots, its own store and trust anchors, and the image's version file."""
+
+
+def _overlaps(a: str, b: str) -> bool:
+    return a == b or a.startswith(b + "/") or b.startswith(a + "/")
+
+
+def check_base_slots(what: str, slots: Iterable[ParameterSlot]) -> None:
+    """The slots a base declares: disjoint, none over what the consumer reads for
+    itself, and no `apply` inside a slot, where a set could replace it. A set
+    carries files only; what runs is the base's."""
+    _slots = list(slots)
+    check_slots_disjoint(what, _slots)
+    for _slot in _slots:
+        for _reserved in RESERVED_PATHS:
+            if _overlaps(_slot.path, _reserved):
+                raise ValueError(
+                    f"{what}: slot {_slot.name!r} ({_slot.path}) overlaps {_reserved}, "
+                    "which a consumer reads for itself"
+                )
+        for _other in _slots:
+            if _slot.apply != APPLY_REBOOT and _overlaps(_slot.apply, _other.path):
+                raise ValueError(
+                    f"{what}: slot {_slot.name!r}'s apply {_slot.apply} is in slot "
+                    f"{_other.name!r} ({_other.path}), which a set replaces"
+                )
