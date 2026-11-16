@@ -120,7 +120,8 @@ A consumer:
    Its unpacked copy and what mounts it at boot (a managed block of `/etc/fstab`, say) are the consumer's own, and may live in the running slot when that slot is writable; the files under the slots' paths are never written.
 5. Runs the `apply` of each slot whose contents changed (a slot's files, by path and digest, differ from what it held), or reboots for one whose `apply` is `reboot`; a slot whose contents are the same is not applied again.
    When placing a slot or an `apply` fails, it restores the previous state, runs the `apply` again and reports the failure.
-6. On a later boot of the same base, lays the stored set again before what reads the parameters starts, and falls back to the base's defaults if the set no longer verifies.
+6. On a later boot of the same base, lays the stored set again before what reads the parameters starts.
+   What the ECU runs changes by an update only: a consumer that finds its stored copy changed (a file edited, added or removed) keeps it in place and records the finding, and the next update of the set replaces the copy and runs the `apply` of every slot it fills, whatever the file lists say.
 
 After a full update to another base, a stored set is not applied: its `subject` no longer matches, and the ECU runs with the new base's defaults.
 
