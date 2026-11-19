@@ -15,9 +15,9 @@
 
 A parameter set names the slots it fills, each with how a change to it takes effect
 (`apply`). The base declares nothing: a slot is a directory the base ships, and its
-contents there are what the slot holds when no set fills it. Kept apart from the
-parameter set schema so that the layer can import it without the manifests.
-Specification: spec/parameter_set.md.
+contents there are what the slot holds when no set fills it. The checks of the slots,
+on their own and against a tree, are here; the config that carries them is in
+schema.py. Specification: spec/parameter_set.md.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ import os
 import posixpath
 import re
 import stat
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from pydantic import model_validator
@@ -37,6 +37,13 @@ from ota_image_libs.common import AliasEnabledModel
 SLOT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 APPLY_REBOOT = "reboot"
 """The `apply` that asks the consumer to reboot instead of running a command."""
+WHITEOUT_PREFIX = ".wh."
+"""What an OCI layer reads as a whiteout: no slot path has a component starting so."""
+
+
+def is_within(path: str, directory: str) -> bool:
+    """`path` is `directory` or below it; both normalized, absolute or both relative."""
+    return path == directory or path.startswith(directory + "/")
 
 
 def check_absolute_path(what: str, path: str) -> None:
@@ -69,12 +76,25 @@ class ParameterSlotRef(AliasEnabledModel):
                 "starting with a letter or digit"
             )
         check_absolute_path(f"slot {self.name!r} path", self.path)
+        if any(_c.startswith(WHITEOUT_PREFIX) for _c in self.path.split("/")):
+            raise ValueError(
+                f"slot {self.name!r} path {self.path!r}: a component starting with "
+                f"{WHITEOUT_PREFIX!r} would be read as a whiteout"
+            )
         return self
 
     @property
     def relpath(self) -> str:
         """The path as a tar member or a tree relative to `/` names it."""
         return self.path[1:]
+
+
+def slot_of(path: str, slots: Sequence[ParameterSlotRef]) -> ParameterSlotRef | None:
+    """The slot a path relative to `/` belongs to: the slot's directory or below it."""
+    for _s in slots:
+        if is_within(path, _s.relpath):
+            return _s
+    return None
 
 
 class ParameterSlot(ParameterSlotRef):
@@ -103,9 +123,7 @@ def check_slots_disjoint(what: str, slots: Iterable[ParameterSlotRef]) -> None:
         raise ValueError(f"{what}: slot names must be unique: {_names}")
     for _a in _slots:
         for _b in _slots:
-            if _a is not _b and (
-                _a.path == _b.path or _b.path.startswith(_a.path + "/")
-            ):
+            if _a is not _b and is_within(_b.path, _a.path):
                 raise ValueError(
                     f"{what}: slot {_b.name!r} ({_b.path}) is inside or the same as "
                     f"slot {_a.name!r} ({_a.path})"
@@ -113,12 +131,26 @@ def check_slots_disjoint(what: str, slots: Iterable[ParameterSlotRef]) -> None:
 
 
 RESERVED_PATHS = ("/boot", "/etc/fstab", "/opt/ota", "/usr/share/ota")
-"""What a consumer reads for itself, never a slot's: its boot files, the fstab that
-mounts the slots, its own store and trust anchors, and the image's version file."""
+"""What every consumer reads for itself, never a slot's: the boot files, the fstab that
+mounts the slots, the consumer's store and trust anchors, and the image's version file.
+A consumer passes what else it reads for itself to `check_slots_in_tree`."""
 
 
 def _overlaps(a: str, b: str) -> bool:
-    return a == b or a.startswith(b + "/") or b.startswith(a + "/")
+    return is_within(a, b) or is_within(b, a)
+
+
+def _check_not_reserved(
+    what: str, slots: Iterable[ParameterSlotRef], reserved: Iterable[str]
+) -> None:
+    _reserved = list(reserved)
+    for _slot in slots:
+        for _path in _reserved:
+            if _overlaps(_slot.path, _path):
+                raise ValueError(
+                    f"{what}: slot {_slot.name!r} ({_slot.path}) overlaps {_path}, "
+                    "which a consumer reads for itself"
+                )
 
 
 def check_slots(what: str, slots: Iterable[ParameterSlot]) -> None:
@@ -127,13 +159,8 @@ def check_slots(what: str, slots: Iterable[ParameterSlot]) -> None:
     consumer is the base's, and it is there to run again when the set is gone."""
     _slots = list(slots)
     check_slots_disjoint(what, _slots)
+    _check_not_reserved(what, _slots, RESERVED_PATHS)
     for _slot in _slots:
-        for _reserved in RESERVED_PATHS:
-            if _overlaps(_slot.path, _reserved):
-                raise ValueError(
-                    f"{what}: slot {_slot.name!r} ({_slot.path}) overlaps {_reserved}, "
-                    "which a consumer reads for itself"
-                )
         for _other in _slots:
             if _slot.apply != APPLY_REBOOT and _overlaps(_slot.apply, _other.path):
                 raise ValueError(
@@ -142,15 +169,27 @@ def check_slots(what: str, slots: Iterable[ParameterSlot]) -> None:
                 )
 
 
-def check_slots_in_tree(root: Path | str, slots: Iterable[ParameterSlot]) -> None:
+def check_slots_in_tree(
+    root: Path | str,
+    slots: Iterable[ParameterSlot],
+    *,
+    reserved: Iterable[str] = (),
+) -> None:
     """The base at `root` (a deployed tree, or `/` on the device) has what the slots
     need: each slot's directory, and each `apply` as an executable regular file.
 
     Both are taken at their real paths: a symbolic link on the way could lead out of
-    the tree, or put the `apply` inside a slot after all. Raises ValueError.
+    the tree, or put the `apply` inside a slot after all. `reserved` names what the
+    consumer reads for itself besides RESERVED_PATHS (absolute paths): a slot over one
+    of them is refused too. Raises ValueError.
     """
+    _slots = list(slots)
+    _reserved = list(reserved)
+    for _path in _reserved:
+        check_absolute_path("reserved path", _path)
+    _check_not_reserved("the consumer", _slots, _reserved)
     _root = os.path.realpath(root)
-    for _slot in slots:
+    for _slot in _slots:
         _dir = os.path.join(_root, _slot.relpath)
         if os.path.realpath(_dir) != _dir:
             raise ValueError(
@@ -169,10 +208,12 @@ def check_slots_in_tree(root: Path | str, slots: Iterable[ParameterSlot]) -> Non
             )
         try:
             _st = os.stat(_apply)
-        except FileNotFoundError:
+        except OSError as e:
+            # also a component of the way that is a file (ENOTDIR)
             raise ValueError(
-                f"slot {_slot.name!r}: the base has no apply {_slot.apply}"
-            ) from None
+                f"slot {_slot.name!r}: the base has no apply {_slot.apply}: "
+                f"{e.strerror}"
+            ) from e
         if not stat.S_ISREG(_st.st_mode) or not _st.st_mode & 0o111:
             raise ValueError(
                 f"slot {_slot.name!r}: apply {_slot.apply} is not an executable file"

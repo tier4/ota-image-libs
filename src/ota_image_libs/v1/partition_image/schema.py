@@ -59,6 +59,7 @@ from ota_image_libs.v1.image_manifest.schema import (
     ImageIDMixin,
     ImageManifest,
     PayloadManifestDescriptor,
+    require_artifact_type,
 )
 from ota_image_libs.v1.media_types import (
     IMAGE_MANIFEST,
@@ -657,11 +658,7 @@ class PartitionImageManifest(ImageIDMixin, MetaFileBase):
         @model_validator(mode="before")
         @classmethod
         def _artifact_type_present(cls, data: Any, info: ValidationInfo) -> Any:
-            # The two payload kinds share a mediaType: an entry without artifactType is
-            # the file-based payload's.
-            if info.mode == "json" and isinstance(data, dict) and "artifactType" not in data:
-                raise ValueError("a partition-based payload's descriptor carries artifactType")
-            return data
+            return require_artifact_type("a partition-based payload's descriptor", data, info)
     # fmt: on
 
     class Annotations(ImageManifest.Annotations): ...

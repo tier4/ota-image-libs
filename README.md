@@ -6,6 +6,7 @@ A Python library and CLI toolkit for creating, reading, verifying, and deploying
 
 - **OCI-compliant image specification** - Image index, manifest, and config schemas based on OCI standards
 - **Two payload kinds** - file-based (a rootfs, file by file, deduplicated) and partition-based (whole partition images or a vendor package, for read-only, integrity-protected roots)
+- **Parameter sets** - a few directories of an ECU's rootfs, delivered on their own in a parameter image and laid over the running base
 - **Cryptographic signing and verification** - ES256 JWT signatures with X.509 certificate chain validation
 - **Artifact packing and reading** - Reproducible ZIP-based artifact format with content-addressable blob storage
 - **Multi-threaded deployment** - Concurrent image payload extraction and rootfs deployment
@@ -71,6 +72,13 @@ ota-image-tools verify-sign --ca-dir /path/to/ca-certs /path/to/ota-image
 # Deploy an image to a target directory
 ota-image-tools deploy-image \
   --image /path/to/ota-image.zip \
+  --ecu-id my-ecu \
+  --rootfs-dir /path/to/rootfs
+
+# Deploy an image with a parameter set laid over it, as a device runs the pair
+ota-image-tools deploy-image \
+  --image /path/to/ota-image.zip \
+  --parameter-image /path/to/parameter-image.zip \
   --ecu-id my-ecu \
   --rootfs-dir /path/to/rootfs
 ```

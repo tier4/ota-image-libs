@@ -37,7 +37,9 @@ from ota_image_tools.libs.deploy_image import (
     RootfsDeployer,
 )
 from ota_image_tools.libs.deploy_parameter_set import (
+    ParameterSetInvalid,
     ParameterSetNotApplicable,
+    open_parameter_set,
     overlay_parameter_set,
 )
 
@@ -126,6 +128,22 @@ def deploy_image_cmd(args: Namespace) -> None:  # pragma: no cover
     image = Path(args.image)
     if not image.is_file():
         exit_with_err_msg(f"input image file {image} not found!")
+    image_id = ImageIdentifier(ecu_id=args.ecu_id, release_key=args.release_key)
+
+    parameter_image = None
+    if args.parameter_image:
+        # what can be told without the base, before spending the time to deploy it
+        parameter_image = Path(args.parameter_image)
+        if not parameter_image.is_file():
+            exit_with_err_msg(f"parameter image file {parameter_image} not found!")
+        try:
+            _set_config = open_parameter_set(parameter_image, image_id)
+        except (ParameterSetNotApplicable, ParameterSetInvalid) as e:
+            exit_with_err_msg(f"cannot use the parameter image: {e}")
+        logger.info(
+            f"will lay parameter set {_set_config.name} {_set_config.version} over "
+            "the deployed rootfs"
+        )
 
     rootfs_dir = Path(args.rootfs_dir)
     if rootfs_dir.is_dir():
@@ -160,7 +178,6 @@ def deploy_image_cmd(args: Namespace) -> None:  # pragma: no cover
         workdir = tmpdir / "workdir"
         workdir.mkdir()
 
-        image_id = ImageIdentifier(ecu_id=args.ecu_id, release_key=args.release_key)
         logger.info(f"will use system image payload with {image_id=}.")
         workdir_setup = OTAImageDeployerSetup(image_id, artifact=image, workdir=workdir)
 
@@ -208,15 +225,19 @@ def deploy_image_cmd(args: Namespace) -> None:  # pragma: no cover
 
         logger.info(f"finish deploying system image with {image_id=} to {rootfs_dir=}!")
 
-        if args.parameter_image:
+        if parameter_image:
             try:
                 _set_config = overlay_parameter_set(
                     rootfs_dir=rootfs_dir,
-                    parameter_image=Path(args.parameter_image),
+                    parameter_image=parameter_image,
                     image_id=image_id,
                     tmp_dir=tmpdir,
                 )
-            except (ParameterSetNotApplicable, ParameterLayerInvalid) as e:
+            except (
+                ParameterSetNotApplicable,
+                ParameterSetInvalid,
+                ParameterLayerInvalid,
+            ) as e:
                 exit_with_err_msg(f"cannot lay the parameter set over the rootfs: {e}")
             logger.info(
                 f"parameter set {_set_config.name} {_set_config.version} laid over "

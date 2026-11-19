@@ -30,7 +30,7 @@ Schema as code: [`image_index/schema.py`](../src/ota_image_libs/v1/image_index/s
     OTAClient uses it to update the target ECU.
 
   - **OTA image payload, partition-based** — A [partition-based payload](partition_image.md) manifest descriptor with `artifactType` set to `application/vnd.tier4.ota.partition-based-ota-image.v1`, identified by the same two annotations.
-    The two payload kinds share the OCI image manifest media type; a consumer tells them apart by `artifactType`, and one identifier (`ecu_id`, `release_key`) names at most one payload of either kind.
+    The payload kinds share the OCI image manifest media type; a consumer tells them apart by `artifactType`, and one identifier (`ecu_id`, `release_key`) names at most one payload of any kind.
     This entry kind is known from 0.6.0 on. A consumer before that does not refuse the index for it: it takes the entry for a file-based payload and fails only when it parses the manifest of its own ECU's payload, which to it looks like a broken image. A campaign MUST NOT give a partition-based payload to an ECU whose consumer predates 0.6.0; the other ECUs of the same image are unaffected.
 
   - **Parameter set** — A [parameter set](parameter_set.md) manifest descriptor with `artifactType` set to `application/vnd.tier4.ota.parameter-set.v1`, identified by the same two annotations: the ECU's payload in a parameter image.

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import posixpath
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable
 from typing import Any
 
 from pydantic import Field, ValidationInfo, computed_field, model_validator
@@ -50,6 +50,7 @@ from ota_image_libs.v1.image_manifest.schema import (
     ImageManifest,
     OTAReleaseKey,
     PayloadManifestDescriptor,
+    require_artifact_type,
 )
 from ota_image_libs.v1.media_types import (
     IMAGE_MANIFEST,
@@ -59,26 +60,10 @@ from ota_image_libs.v1.media_types import (
 )
 from ota_image_libs.v1.update_agent_package.schema import EmptyConfigDescriptor
 
-from .slots import SLOT_NAME, ParameterSlot, ParameterSlotRef, check_slots
+from .slots import SLOT_NAME, ParameterSlot, check_slots, slot_of
 
 VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}")
 """A set's version: reported as it is, so nothing that would need escaping."""
-
-
-def _require_artifact_type(cls: type, data: Any, info: ValidationInfo) -> Any:
-    # A descriptor told apart from another of the same mediaType by its artifactType
-    # carries one: without it, it would read as the file-based payload's.
-    if info.mode == "json" and isinstance(data, dict) and "artifactType" not in data:
-        raise ValueError(f"{cls.__name__} carries artifactType")
-    return data
-
-
-def slot_of(path: str, slots: Sequence[ParameterSlotRef]) -> ParameterSlotRef | None:
-    """The slot a path relative to `/` belongs to: the slot's directory or below it."""
-    for _s in slots:
-        if path == _s.relpath or path.startswith(_s.relpath + "/"):
-            return _s
-    return None
 
 
 #
@@ -126,7 +111,8 @@ class ParameterSetConfig(MetaFileBase):
     created: str | None = None
     slots: list[ParameterSlot] = Field(default_factory=list)
     diff_ids: list[Sha256Digest] = Field(default_factory=list)
-    files: list[ParameterSetFileEntry] = Field(default_factory=list)
+    files: list[ParameterSetFileEntry] | None = None
+    """The layer's regular files; None when the config does not list them."""
 
     @model_validator(mode="after")
     def _well_formed(self) -> Self:
@@ -142,7 +128,7 @@ class ParameterSetConfig(MetaFileBase):
                 f"not {len(self.diff_ids)}"
             )
         _seen: set[str] = set()
-        for _f in self.files:
+        for _f in self.files or ():
             if (
                 posixpath.normpath(_f.path) != _f.path
                 or _f.path.startswith("/")
@@ -167,6 +153,21 @@ class ParameterSetConfig(MetaFileBase):
                 return _s
         return None
 
+    def check_files(self, files: Iterable[ParameterSetFileEntry]) -> None:
+        """The layer's regular files (as `read_parameter_layer` returns them) are
+        exactly the ones the config lists, by path, size and digest, when it lists
+        them. Raises ValueError otherwise."""
+        if self.files is None:
+            return
+        _listed = {(_f.path, _f.size, _f.digest.digest_hex) for _f in self.files}
+        _held = {(_f.path, _f.size, _f.digest.digest_hex) for _f in files}
+        if _listed != _held:
+            _diff = sorted(_p for _p, _, _ in _listed ^ _held)
+            raise ValueError(
+                f"the config lists other files than the layer holds: {_diff[:5]}"
+                + (f" and {len(_diff) - 5} more" if len(_diff) > 5 else "")
+            )
+
 
 #
 # ------ the manifest ------ #
@@ -190,7 +191,7 @@ class ParameterSetManifest(ImageIDMixin, MetaFileBase):
         @model_validator(mode="before")
         @classmethod
         def _artifact_type_present(cls, data: Any, info: ValidationInfo) -> Any:
-            return _require_artifact_type(cls, data, info)
+            return require_artifact_type("a parameter set's descriptor", data, info)
 
     class Annotations(AliasEnabledModel):
         pilot_auto_platform_ecu: str = Field(alias=PLATFORM_ECU)

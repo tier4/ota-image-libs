@@ -50,8 +50,11 @@ from ota_image_libs.v1.media_types import (
     PARAMETER_SET_ARTIFACT,
     PARAMETER_SET_CONFIG_JSON,
 )
+from ota_image_libs.v1.parameter_set import layer as layer_module
 from ota_image_libs.v1.parameter_set.layer import (
+    MAX_TAR_TRAILER,
     OPAQUE_WHITEOUT,
+    READ_SIZE,
     ParameterLayerInvalid,
     read_parameter_layer,
     write_parameter_layer,
@@ -60,6 +63,7 @@ from ota_image_libs.v1.parameter_set.schema import (
     EmptyDescriptor,
     ParameterLayerDescriptor,
     ParameterSetConfig,
+    ParameterSetFileEntry,
     ParameterSetManifest,
 )
 from ota_image_libs.v1.parameter_set.slots import (
@@ -71,14 +75,17 @@ from ota_image_libs.v1.parameter_set.slots import (
 )
 from ota_image_libs.v1.update_agent_package.schema import EMPTY_JSON
 from ota_image_tools.cmds.list_image import _list_image_from_artifact, _render_output
+from ota_image_tools.cmds.lookup_image import _lookup_image_from_artifact
 from ota_image_tools.libs.deploy_parameter_set import (
+    ParameterSetInvalid,
     ParameterSetNotApplicable,
+    open_parameter_set,
     overlay_parameter_set,
 )
 
-SLOT_PATH = "/opt/autoware/vehicle/vehicle.j6_gen2/individual_params"
-OTHER_SLOT_PATH = "/opt/autoware/vehicle/vehicle.j6_gen2/j6_gen2_launch"
-APPLY = "/opt/autoware/vehicle/vehicle.j6_gen2/apply.sh"
+SLOT_PATH = "/opt/autoware/vehicle/sample_vehicle/individual_params"
+OTHER_SLOT_PATH = "/opt/autoware/vehicle/sample_vehicle/launch"
+APPLY = "/opt/autoware/vehicle/sample_vehicle/apply.sh"
 SLOT = ParameterSlot(name="individual_params", path=SLOT_PATH, apply=APPLY)
 OTHER_SLOT = ParameterSlot(name="launch", path=OTHER_SLOT_PATH, apply="reboot")
 ECU = "autoware"
@@ -95,8 +102,8 @@ def make_tree(root: Path, slot: ParameterSlotRef = SLOT) -> Path:
     _slot_dir = root / slot.relpath
     (_slot_dir / "default").mkdir(parents=True)
     (_slot_dir / "default" / "vehicle.param.yaml").write_text("max_speed: 10\n")
-    (_slot_dir / "J6-0042").mkdir()
-    (_slot_dir / "J6-0042" / "vehicle.param.yaml").write_text("max_speed: 12\n")
+    (_slot_dir / "vehicle-0042").mkdir()
+    (_slot_dir / "vehicle-0042" / "vehicle.param.yaml").write_text("max_speed: 12\n")
     (_slot_dir / "README").write_text("parameters\n")
     return root
 
@@ -107,13 +114,25 @@ def layer_bytes(root: Path, slots=(SLOT,)) -> tuple[bytes, object]:
     return _out.getvalue(), _info
 
 
-def zstd_tar(members: list[tuple[tarfile.TarInfo, bytes | None]]) -> bytes:
-    """A hand-made layer, for what the writer would never write."""
+def raw_tar(members: list[tuple[tarfile.TarInfo, bytes | None]]) -> bytes:
+    """A hand-made tar, with its end-of-archive marker and record padding."""
     _raw = io.BytesIO()
     with tarfile.open(fileobj=_raw, mode="w", format=tarfile.PAX_FORMAT) as _tar:
         for _ti, _data in members:
             _tar.addfile(_ti, io.BytesIO(_data) if _data is not None else None)
-    return zstandard.ZstdCompressor().compress(_raw.getvalue())
+    return _raw.getvalue()
+
+
+def zstd_tar(members: list[tuple[tarfile.TarInfo, bytes | None]]) -> bytes:
+    """A hand-made layer, for what the writer would never write."""
+    return zstandard.ZstdCompressor().compress(raw_tar(members))
+
+
+def tar_members_end(raw: bytes) -> int:
+    """Where the end-of-archive marker of `raw` starts."""
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r") as _tar:
+        _tar.getmembers()
+        return _tar.offset
 
 
 def member(
@@ -162,6 +181,12 @@ class TestSlots:
         with pytest.raises(ValidationError):
             ParameterSlot(name="s", path=SLOT_PATH, apply=apply)
 
+    @pytest.mark.parametrize("path", ("/opt/.wh.params", "/opt/.wh..wh..opq/x"))
+    def test_a_slot_path_has_no_whiteout_name(self, path):
+        """The reader would take the slot's directory for a whiteout."""
+        with pytest.raises(ValidationError, match="whiteout"):
+            ParameterSlotRef(name="s", path=path)
+
     @pytest.mark.parametrize("name", ("", "-x", "a b", "x" * 65))
     def test_a_slot_name_is_a_plain_name(self, name):
         with pytest.raises(ValidationError):
@@ -181,6 +206,10 @@ class TestSlots:
             check_slots_disjoint(
                 "t", [SLOT, ParameterSlotRef(name="same", path=SLOT_PATH)]
             )
+        # a path that only starts with the same letters is another directory
+        check_slots_disjoint(
+            "t", [SLOT, ParameterSlotRef(name="sibling", path=f"{SLOT_PATH}2")]
+        )
 
     @pytest.mark.parametrize(
         "path",
@@ -196,6 +225,12 @@ class TestSlots:
     def test_a_slot_is_not_over_what_the_consumer_reads(self, path):
         with pytest.raises(ValueError, match="reads for itself"):
             check_slots("t", [ParameterSlot(name="s", path=path, apply="reboot")])
+
+    @pytest.mark.parametrize(
+        "path", ("/opt/otaclient", "/bootstrap", "/usr/share/otafoo", "/etc/fstab.d")
+    )
+    def test_a_slot_next_to_what_the_consumer_reads(self, path):
+        check_slots("t", [ParameterSlot(name="s", path=path, apply="reboot")])
 
     def test_a_slots_apply_is_not_inside_a_slot(self):
         """What runs is the base's: inside a slot, a set would replace it."""
@@ -232,7 +267,7 @@ def config_dict(**kw) -> dict:
     _d = {
         "schemaVersion": 1,
         "mediaType": PARAMETER_SET_CONFIG_JSON,
-        "name": "j6_gen2_params",
+        "name": "sample_vehicle_params",
         "version": "2026.10.29-1",
         "slots": [{"name": SLOT.name, "path": SLOT.path, "apply": APPLY}],
         "diff_ids": [DIFF_ID],
@@ -311,6 +346,9 @@ class TestConfig:
                 },
                 id="file_path_not_normalized",
             ),
+            pytest.param(
+                {"files": [config_dict()["files"][0]] * 2}, id="file_listed_twice"
+            ),
             pytest.param({"version": "1 0"}, id="version_with_a_space"),
             pytest.param({"name": ""}, id="no_name"),
             pytest.param(
@@ -347,6 +385,37 @@ class TestConfig:
     def test_a_config_that_does_not_add_up_is_refused(self, change):
         with pytest.raises(ValidationError):
             ParameterSetConfig.parse_metafile(json.dumps(config_dict(**change)))
+
+    def test_the_files_listed_are_the_layers(self):
+        _config = ParameterSetConfig.parse_metafile(json.dumps(config_dict()))
+        assert _config.files is not None
+        _listed = _config.files[0]
+        _config.check_files([_listed])
+
+        _other_digest = _listed.model_copy(update={"digest": Sha256Digest("9" * 64)})
+        _other_size = _listed.model_copy(update={"size": _listed.size + 1})
+        _extra = ParameterSetFileEntry(
+            path=f"{SLOT.relpath}/extra", size=0, digest=Sha256Digest("8" * 64)
+        )
+        for _held in ([_other_digest], [_other_size], [_listed, _extra], []):
+            with pytest.raises(ValueError, match="other files"):
+                _config.check_files(_held)
+
+    def test_files_left_out_are_not_checked_and_an_empty_list_is(self):
+        _raw = config_dict()
+        del _raw["files"]
+        _without = ParameterSetConfig.parse_metafile(json.dumps(_raw))
+        assert _without.files is None
+        assert "files" not in json.loads(_without.export_metafile())
+        _without.check_files([])
+
+        _empty = ParameterSetConfig.parse_metafile(json.dumps(config_dict(files=[])))
+        _empty.check_files([])
+        _a_file = ParameterSetFileEntry(
+            path=f"{SLOT.relpath}/a", size=1, digest=Sha256Digest("8" * 64)
+        )
+        with pytest.raises(ValueError, match="other files"):
+            _empty.check_files([_a_file])
 
 
 class TestManifest:
@@ -392,6 +461,13 @@ class TestManifest:
         )
         with pytest.raises(ValueError, match="empty"):
             _manifest.check_config(_empty)
+
+        _empty_manifest = ParameterSetManifest.parse_metafile(
+            json.dumps(manifest_dict(empty=True))
+        )
+        _empty_manifest.check_config(_empty)
+        with pytest.raises(ValueError, match="empty"):
+            _empty_manifest.check_config(_config)
 
 
 class TestIndex:
@@ -440,6 +516,17 @@ class TestIndex:
         with pytest.raises(ValueError, match="parameter sets only"):
             _index.add_image(_base)
 
+        # the sets of other ECUs go in
+        _index.add_image(
+            ParameterSetManifest.Descriptor.model_validate(
+                {
+                    **self.entry(),
+                    "annotations": {**MANIFEST_ANNOTATIONS, PLATFORM_ECU: "perception"},
+                }
+            )
+        )
+        assert len(_index.image_identifiers) == 2
+
         _raw = self.entry()
         del _raw["artifactType"]
         _base_index = ImageIndex.parse_metafile(json.dumps(self.index_dict(_raw)))
@@ -486,9 +573,9 @@ class TestLayer:
         assert _read.files == _written.files
         assert len(_read.files) == 3
         assert _read.files_size == _written.files_size
-        assert (_out / SLOT.relpath / "J6-0042" / "vehicle.param.yaml").read_text() == (
-            "max_speed: 12\n"
-        )
+        assert (
+            _out / SLOT.relpath / "vehicle-0042" / "vehicle.param.yaml"
+        ).read_text() == ("max_speed: 12\n")
         assert not (_out / SLOT.relpath / OPAQUE_WHITEOUT).exists()
 
         with tarfile.open(
@@ -520,9 +607,8 @@ class TestLayer:
         with pytest.raises(ParameterLayerInvalid, match="behind a symbolic link"):
             layer_bytes(_root)
 
-    def test_the_reader_does_not_write_through_a_link_in_the_target(
-        self, tmp_path: Path
-    ):
+    def test_the_reader_unpacks_into_an_empty_target_only(self, tmp_path: Path):
+        """What is there already could be a link out of the target."""
         _blob, _ = layer_bytes(make_tree(tmp_path / "tree"))
         _out = tmp_path / "out"
         _victim = tmp_path / "victim"
@@ -530,9 +616,62 @@ class TestLayer:
         _readme = _out / SLOT.relpath / "README"
         _readme.parent.mkdir(parents=True)
         _readme.symlink_to(_victim)
-        with pytest.raises(OSError):
+        with pytest.raises(ValueError, match="not empty"):
             read_parameter_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
         assert _victim.read_text() == "untouched\n"
+
+        # a target that is not there yet is made
+        read_parameter_layer(io.BytesIO(_blob), [SLOT], extract_to=tmp_path / "new")
+        assert (tmp_path / "new" / SLOT.relpath / "README").is_file()
+
+    def test_a_short_write_is_written_on(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """os.write may write less than asked, as a filesystem running out of room
+        does: what was hashed must be what is on disk."""
+        _root = make_tree(tmp_path / "tree")
+        _data = os.urandom(300_000)
+        (_root / SLOT.relpath / "big").write_bytes(_data)
+        _blob, _ = layer_bytes(_root)
+
+        _real_write = os.write
+
+        def _short_write(fd: int, data) -> int:
+            return _real_write(fd, bytes(data[: max(1, len(data) // 3)]))
+
+        _out = tmp_path / "out"
+        monkeypatch.setattr(layer_module.os, "write", _short_write)
+        read_parameter_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
+        monkeypatch.undo()
+        assert (_out / SLOT.relpath / "big").read_bytes() == _data
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads any directory")
+    def test_the_writer_refuses_a_directory_it_cannot_read(self, tmp_path: Path):
+        """Its files would be left out of the layer without a word."""
+        _root = make_tree(tmp_path / "tree")
+        _locked = _root / SLOT.relpath / "default"
+        _locked.chmod(0o300)
+        try:
+            with pytest.raises(ParameterLayerInvalid, match="cannot read"):
+                layer_bytes(_root)
+        finally:
+            _locked.chmod(0o755)
+
+    def test_a_directory_without_write_permission_is_filled(self, tmp_path: Path):
+        _root = make_tree(tmp_path / "tree")
+        _ro = _root / SLOT.relpath / "default"
+        _ro.chmod(0o555)
+        try:
+            _blob, _ = layer_bytes(_root)
+            _out = tmp_path / "out"
+            read_parameter_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
+            _unpacked = _out / SLOT.relpath / "default"
+            assert (_unpacked / "vehicle.param.yaml").read_text() == "max_speed: 10\n"
+            assert stat.S_IMODE(_unpacked.stat().st_mode) == 0o555
+        finally:
+            _ro.chmod(0o755)
+            if (tmp_path / "out").exists():
+                (tmp_path / "out" / SLOT.relpath / "default").chmod(0o755)
 
     def test_two_slots_in_one_layer(self, tmp_path: Path):
         _root = make_tree(make_tree(tmp_path / "tree"), OTHER_SLOT)
@@ -571,13 +710,14 @@ class TestLayer:
             layer_bytes(tmp_path)
 
     @pytest.mark.parametrize(
-        "members",
+        "members, refusal",
         (
             pytest.param(
                 [
                     *slot_members(),
                     member(f"{SLOT.relpath}/l", tarfile.SYMTYPE, linkname="x"),
                 ],
+                "only regular files and directories",
                 id="symlink",
             ),
             pytest.param(
@@ -590,24 +730,41 @@ class TestLayer:
                         linkname=f"{SLOT.relpath}/a",
                     ),
                 ],
+                "only regular files and directories",
                 id="hardlink",
             ),
             pytest.param(
                 [*slot_members(), member(f"{SLOT.relpath}/d", tarfile.CHRTYPE)],
+                "only regular files and directories",
                 id="device",
             ),
             pytest.param(
-                [*slot_members(), member("etc/passwd", data=b"x")], id="outside"
+                [*slot_members(), member("etc/passwd", data=b"x")],
+                "not in one of the set's slots",
+                id="outside",
             ),
             pytest.param(
                 [*slot_members(), member(f"{SLOT.relpath}/../../x", data=b"x")],
+                "not a normalized path",
                 id="dot_dot",
             ),
             pytest.param(
-                [*slot_members(), member(f"/{SLOT.relpath}/x")], id="absolute"
+                [
+                    *slot_members(),
+                    member(f"{SLOT.relpath}/..", tarfile.DIRTYPE, mode=0o755),
+                    member(f"{SLOT.relpath}/../evil", data=b"x"),
+                ],
+                "not a normalized path",
+                id="dot_dot_after_its_dir",
+            ),
+            pytest.param(
+                [*slot_members(), member(f"/{SLOT.relpath}/x")],
+                "not a normalized path",
+                id="absolute",
             ),
             pytest.param(
                 [*slot_members(), member(f"{SLOT.relpath}/.wh.gone")],
+                "the only whiteout",
                 id="other_whiteout",
             ),
             pytest.param(
@@ -616,13 +773,18 @@ class TestLayer:
                     member(f"{SLOT.relpath}/d", tarfile.DIRTYPE, mode=0o755),
                     member(f"{SLOT.relpath}/d/{OPAQUE_WHITEOUT}"),
                 ],
+                "the only whiteout",
                 id="opaque_below_the_slot",
             ),
             pytest.param(
-                [member(SLOT.relpath, tarfile.DIRTYPE, mode=0o755)], id="no_opaque"
+                [member(SLOT.relpath, tarfile.DIRTYPE, mode=0o755)],
+                "lacks its directory or its opaque whiteout",
+                id="no_opaque",
             ),
             pytest.param(
-                [member(f"{SLOT.relpath}/{OPAQUE_WHITEOUT}")], id="no_slot_dir"
+                [member(f"{SLOT.relpath}/{OPAQUE_WHITEOUT}")],
+                "lacks its directory or its opaque whiteout",
+                id="no_slot_dir",
             ),
             pytest.param(
                 [
@@ -630,35 +792,54 @@ class TestLayer:
                     member(f"{SLOT.relpath}/x"),
                     member(f"{SLOT.relpath}/x"),
                 ],
+                "appears twice",
                 id="twice",
             ),
             pytest.param(
-                [*slot_members(), member(f"{SLOT.relpath}/x", mode=0o4755)], id="setuid"
+                [*slot_members(), member(f"{SLOT.relpath}/x", mode=0o4755)],
+                "setuid",
+                id="setuid",
             ),
             pytest.param(
-                [*slot_members(), member(f"{SLOT.relpath}/d/x")], id="before_its_dir"
+                [*slot_members(), member(f"{SLOT.relpath}/d/x")],
+                "comes before its directory",
+                id="before_its_dir",
             ),
             pytest.param(
                 [
                     member(SLOT.relpath, tarfile.DIRTYPE, mode=0o755),
                     member(f"{SLOT.relpath}/{OPAQUE_WHITEOUT}", data=b"x"),
                 ],
+                "the only whiteout",
                 id="opaque_with_contents",
             ),
         ),
     )
-    def test_the_reader_refuses_what_a_set_does_not_hold(self, tmp_path: Path, members):
+    def test_the_reader_refuses_what_a_set_does_not_hold(
+        self, tmp_path: Path, members, refusal
+    ):
         _out = tmp_path / "out"
         _out.mkdir()
-        with pytest.raises(ParameterLayerInvalid):
+        with pytest.raises(ParameterLayerInvalid, match=refusal):
             read_parameter_layer(io.BytesIO(zstd_tar(members)), [SLOT], extract_to=_out)
         # what came before the refused member may be there, for the caller to
-        #   discard; nothing is written outside the slot
+        #   discard; nothing is written outside the slot, nor outside the target
         _written = [
             _p.relative_to(_out).as_posix() for _p in _out.rglob("*") if _p.is_file()
         ]
         assert all(_w.startswith(SLOT.relpath + "/") for _w in _written), _written
-        assert not (tmp_path / "etc").exists() and not (tmp_path / "x").exists()
+        assert sorted(_p.name for _p in tmp_path.iterdir()) == ["out"]
+
+    def test_leading_dot_slash_and_trailing_slash_are_read(self):
+        """Another writer may name members so; the paths are the same."""
+        _members = [
+            member(f"./{SLOT.relpath}/", tarfile.DIRTYPE, mode=0o755),
+            member(f"./{SLOT.relpath}/{OPAQUE_WHITEOUT}"),
+            member(f"./{SLOT.relpath}/d/", tarfile.DIRTYPE, mode=0o755),
+            member(f"./{SLOT.relpath}/d/f", data=b"f"),
+        ]
+        _info = read_parameter_layer(io.BytesIO(zstd_tar(_members)), [SLOT])
+        assert [_f.path for _f in _info.files] == [f"{SLOT.relpath}/d/f"]
 
     def test_a_layer_bigger_than_the_bound_is_refused(self, tmp_path: Path):
         _blob, _info = layer_bytes(make_tree(tmp_path / "tree"))
@@ -666,6 +847,7 @@ class TestLayer:
             read_parameter_layer(
                 io.BytesIO(_blob), [SLOT], max_size=_info.files_size - 1
             )
+        read_parameter_layer(io.BytesIO(_blob), [SLOT], max_size=_info.files_size)
 
     def test_digests_that_do_not_match_are_refused(self, tmp_path: Path):
         _blob, _info = layer_bytes(make_tree(tmp_path / "tree"))
@@ -674,6 +856,48 @@ class TestLayer:
             read_parameter_layer(io.BytesIO(_blob), [SLOT], diff_id=_other)
         with pytest.raises(ParameterLayerInvalid, match="blob"):
             read_parameter_layer(io.BytesIO(_blob), [SLOT], blob_digest=_other)
+
+    def test_zero_padding_after_the_archive_is_read_and_hashed(self):
+        """Past what the reader buffers, too: it is in the diff_id."""
+        _members = [
+            *slot_members(),
+            member(f"{SLOT.relpath}/big", data=os.urandom(READ_SIZE // 2)),
+        ]
+        _raw = raw_tar(_members)
+        _padded = _raw + b"\0" * (MAX_TAR_TRAILER - (len(_raw) - tar_members_end(_raw)))
+        assert len(_padded) > READ_SIZE
+        _info = read_parameter_layer(
+            io.BytesIO(zstandard.ZstdCompressor().compress(_padded)),
+            [SLOT],
+            diff_id=Sha256Digest(sha256(_padded).hexdigest()),
+        )
+        assert len(_info.files) == 1
+
+        with pytest.raises(ParameterLayerInvalid, match="after the last member"):
+            read_parameter_layer(
+                io.BytesIO(zstandard.ZstdCompressor().compress(_padded + b"\0")),
+                [SLOT],
+            )
+
+    def test_what_follows_the_archive_is_refused(self):
+        """A reader that reads past the end-of-archive marker would find it."""
+        _smuggled = raw_tar(
+            [member("etc/cron.d", tarfile.DIRTYPE), member("etc/cron.d/job", data=b"x")]
+        )
+        _layer = zstandard.ZstdCompressor().compress(
+            raw_tar(slot_members()) + _smuggled
+        )
+        with pytest.raises(ParameterLayerInvalid, match="more than zero padding"):
+            read_parameter_layer(io.BytesIO(_layer), [SLOT])
+
+    def test_a_tar_cut_short_is_refused(self):
+        """It ends at a member's end, where tarfile stops without a word."""
+        _raw = raw_tar([*slot_members(), member(f"{SLOT.relpath}/a", data=b"a")])
+        _cut = _raw[: tar_members_end(_raw)]
+        with pytest.raises(ParameterLayerInvalid, match="end-of-archive"):
+            read_parameter_layer(
+                io.BytesIO(zstandard.ZstdCompressor().compress(_cut)), [SLOT]
+            )
 
     def test_what_is_not_a_zstd_tar_is_refused(self):
         with pytest.raises(ParameterLayerInvalid):
@@ -719,10 +943,30 @@ class TestInTheTree:
         with pytest.raises(ValueError, match="not an executable"):
             check_slots_in_tree(_root, [SLOT])
         (_root / APPLY[1:]).unlink()
+        (_root / APPLY[1:]).mkdir(mode=0o755)
+        with pytest.raises(ValueError, match="not an executable"):
+            check_slots_in_tree(_root, [SLOT])
+        (_root / APPLY[1:]).rmdir()
         with pytest.raises(ValueError, match="no apply"):
             check_slots_in_tree(_root, [SLOT])
         # reboot needs no file
         check_slots_in_tree(_root, [OTHER_SLOT])
+
+    def test_an_apply_whose_way_is_through_a_file(self, tmp_path: Path):
+        """Another base may have a file where this one has a directory."""
+        _root = base_tree_at(tmp_path / "rootfs")
+        (_root / "opt" / "tools").write_text("a file\n")
+        _slot = ParameterSlot(name="s", path=SLOT_PATH, apply="/opt/tools/apply.sh")
+        with pytest.raises(ValueError, match="no apply"):
+            check_slots_in_tree(_root, [_slot])
+
+    def test_a_slot_over_what_this_consumer_reads_too(self, tmp_path: Path):
+        _root = base_tree_at(tmp_path / "rootfs")
+        check_slots_in_tree(_root, [SLOT], reserved=["/etc/ota"])
+        with pytest.raises(ValueError, match="reads for itself"):
+            check_slots_in_tree(
+                _root, [SLOT], reserved=["/etc/ota", "/opt/autoware/vehicle"]
+            )
 
     def test_links_on_the_way_are_refused(self, tmp_path: Path):
         """A link could lead out of the tree, or into a slot."""
@@ -746,9 +990,16 @@ class TestInTheTree:
 #
 
 
-def build_parameter_image(tmp_path: Path, *, tree: Path | None) -> Path:
+def build_parameter_image(
+    tmp_path: Path,
+    *,
+    tree: Path | None,
+    config_update: dict | None = None,
+    index_annotations: dict | None = None,
+) -> Path:
     """A parameter image artifact with one set for ECU; an empty set when `tree` is
-    None."""
+    None. `config_update` and `index_annotations` spoil the config and the index
+    entry, unchecked."""
     _image_root = tmp_path / "parameter_image"
     _resource_dir = _image_root / RESOURCE_DIR
     _resource_dir.mkdir(parents=True)
@@ -768,6 +1019,8 @@ def build_parameter_image(tmp_path: Path, *, tree: Path | None) -> Path:
             diff_ids=[_info.diff_id],
             files=_info.files,
         )
+    if config_update:
+        _config = _config.model_copy(update=config_update)
     _config_descriptor = ParameterSetConfig.Descriptor.export_metafile_to_resource_dir(
         _config, _resource_dir
     )
@@ -784,7 +1037,9 @@ def build_parameter_image(tmp_path: Path, *, tree: Path | None) -> Path:
     )
     _index.add_image(
         ParameterSetManifest.Descriptor.export_metafile_to_resource_dir(
-            _manifest, _resource_dir, annotations=MANIFEST_ANNOTATIONS
+            _manifest,
+            _resource_dir,
+            annotations=index_annotations or MANIFEST_ANNOTATIONS,
         )
     )
     (_image_root / IMAGE_INDEX_FNAME).write_text(_index.export_metafile())
@@ -835,7 +1090,7 @@ class TestOverlay:
         assert (
             _slot / "default" / "vehicle.param.yaml"
         ).read_text() == "max_speed: 10\n"
-        assert (_slot / "J6-0042" / "vehicle.param.yaml").exists()
+        assert (_slot / "vehicle-0042" / "vehicle.param.yaml").exists()
         assert not (_slot / "only_in_the_base").exists(), "the slot is replaced whole"
         assert (base_tree / OTHER_SLOT.relpath / "launch.xml").exists()
 
@@ -868,6 +1123,81 @@ class TestOverlay:
         with pytest.raises(ParameterSetNotApplicable, match="symbolic link"):
             self.overlay(tmp_path, base_tree, _artifact)
         assert (_outside / "individual_params" / "keep").read_text() == "host file\n"
+
+    def test_files_the_config_lists_and_the_layer_does_not_hold(
+        self, tmp_path: Path, base_tree: Path
+    ):
+        _set = make_tree(tmp_path / "set")
+        _info = write_parameter_layer(_set, [SLOT], io.BytesIO())
+        _files = [
+            *_info.files,
+            ParameterSetFileEntry(
+                path=f"{SLOT.relpath}/not_in_the_layer",
+                size=0,
+                digest=Sha256Digest(sha256(b"").hexdigest()),
+            ),
+        ]
+        _artifact = build_parameter_image(
+            tmp_path, tree=_set, config_update={"files": _files}
+        )
+        with pytest.raises(ParameterSetInvalid, match="other files"):
+            self.overlay(tmp_path, base_tree, _artifact)
+        assert (base_tree / SLOT.relpath / "only_in_the_base").exists()
+
+    def test_a_layer_that_is_not_the_configs_leaves_the_base(
+        self, tmp_path: Path, base_tree: Path
+    ):
+        _artifact = build_parameter_image(
+            tmp_path,
+            tree=make_tree(tmp_path / "set"),
+            config_update={"diff_ids": [Sha256Digest("0" * 64)]},
+        )
+        with pytest.raises(ParameterLayerInvalid, match="the tar is"):
+            self.overlay(tmp_path, base_tree, _artifact)
+        assert (base_tree / SLOT.relpath / "only_in_the_base").exists()
+
+    def test_a_config_that_is_not_the_manifests_is_refused(self, tmp_path: Path):
+        """A set that fills a slot, with the empty descriptor for its layer."""
+        _artifact = build_parameter_image(
+            tmp_path,
+            tree=None,
+            config_update={"slots": [SLOT], "diff_ids": [Sha256Digest("0" * 64)]},
+        )
+        with pytest.raises(ParameterSetInvalid, match="empty"):
+            open_parameter_set(_artifact, IMAGE_ID)
+
+    def test_an_index_entry_naming_another_version_is_refused(self, tmp_path: Path):
+        _artifact = build_parameter_image(
+            tmp_path,
+            tree=None,
+            index_annotations={**MANIFEST_ANNOTATIONS, PARAMETER_SET_VERSION: "0"},
+        )
+        with pytest.raises(ParameterSetInvalid, match="version"):
+            open_parameter_set(_artifact, IMAGE_ID)
+
+    def test_the_parameter_image_is_checked_without_a_base(self, tmp_path: Path):
+        _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))
+        assert open_parameter_set(_artifact, IMAGE_ID).slot(SLOT.name) == SLOT
+        with pytest.raises(ParameterSetNotApplicable, match="no parameter set"):
+            open_parameter_set(
+                _artifact, ImageIdentifier("perception", OTAReleaseKey.dev)
+            )
+        with pytest.raises(ParameterSetInvalid, match="cannot open"):
+            open_parameter_set(tmp_path / "missing.zip", IMAGE_ID)
+        (tmp_path / "not_a_zip").write_text("x")
+        with pytest.raises(ParameterSetInvalid, match="cannot open"):
+            open_parameter_set(tmp_path / "not_a_zip", IMAGE_ID)
+
+    def test_lookup_image_shows_the_set_config(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ):
+        _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))
+        _lookup_image_from_artifact(
+            image_root=_artifact, image_id=IMAGE_ID, show_image_config=True
+        )
+        _shown = json.loads(capsys.readouterr().out)
+        assert _shown["slots"][0]["name"] == SLOT.name
+        assert _shown["version"] == "2026.10.29-1"
 
     def test_list_image_names_the_kind(self, tmp_path: Path):
         _artifact = build_parameter_image(tmp_path, tree=None)

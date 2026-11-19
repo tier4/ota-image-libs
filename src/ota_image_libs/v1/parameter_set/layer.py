@@ -16,7 +16,8 @@
 The layer is an OCI image layer (tar, zstd-compressed) holding, for each slot the set
 fills, the slot's directory, an opaque whiteout in it (`.wh..wh..opq`: the directory
 replaces the base's), and the regular files and directories below it. Nothing else:
-no link, no device, no other whiteout, nothing outside a slot.
+no link, no device, no other whiteout, nothing outside a slot, nothing after the end
+of the archive but its zero padding.
 
 Both directions are here so that the format has one owner: the builder writes with
 `write_parameter_layer`, and a consumer validates (and unpacks) with
@@ -40,16 +41,21 @@ import zstandard
 
 from ota_image_libs.common.oci_spec import Sha256Digest
 
-from .schema import ParameterSetFileEntry, slot_of
-from .slots import ParameterSlotRef
+from .schema import ParameterSetFileEntry
+from .slots import WHITEOUT_PREFIX, ParameterSlotRef, slot_of
 
 OPAQUE_WHITEOUT = ".wh..wh..opq"
 """In a slot's directory: the directory replaces the base's (OCI image layer spec)."""
-WHITEOUT_PREFIX = ".wh."
 
 TAR_FORMAT = tarfile.PAX_FORMAT
 ZSTD_LEVEL = 19
+"""A layer is built once and fetched by every vehicle, so its size counts more than the
+time to build it. The level is part of what the blob's digest depends on (with the
+zstd library's version); the diff_id depends on the tree alone."""
 READ_SIZE = 1024**2
+MAX_TAR_TRAILER = 1024**2
+"""After the last member: the end-of-archive marker (two zero blocks) and the zero
+padding of the last record, at most this much."""
 _DIR_MODE = 0o755
 _OPAQUE_MODE = 0o644
 
@@ -94,22 +100,35 @@ class _HashingReader(io.RawIOBase):
         self._source = source
         self.hash = sha256()
         self.size = 0
+        self.nonzero_end = 0
+        """Where the last byte that is not zero ends, in what was read."""
 
     def readable(self) -> bool:
         return True
+
+    def _account(self, data: bytes) -> None:
+        self.hash.update(data)
+        if data and data[-1]:
+            self.nonzero_end = self.size + len(data)
+        elif _kept := len(data.rstrip(b"\0")):
+            self.nonzero_end = self.size + _kept
+        self.size += len(data)
 
     def readinto(self, b) -> int:  # type: ignore[override]
         _data = self._source.read(len(b))
         _n = len(_data)
         b[:_n] = _data
-        self.hash.update(_data)
-        self.size += _n
+        self._account(_data)
         return _n
 
-    def drain_hashing(self) -> None:
+    def drain_hashing(self, *, up_to: int | None = None) -> None:
+        """Read the rest; ParameterLayerInvalid when it goes past `up_to` bytes."""
         while _data := self._source.read(READ_SIZE):
-            self.hash.update(_data)
-            self.size += len(_data)
+            self._account(_data)
+            if up_to is not None and self.size > up_to:
+                raise ParameterLayerInvalid(
+                    f"more than {MAX_TAR_TRAILER} bytes after the last member"
+                )
 
 
 def _tarinfo(name: str, *, type_: bytes, mode: int, size: int = 0) -> tarfile.TarInfo:
@@ -174,7 +193,9 @@ def _write_slot(
             mode=_OPAQUE_MODE,
         )
     )
-    for _dirpath, _dirnames, _filenames in os.walk(_slot_dir, followlinks=False):
+    for _dirpath, _dirnames, _filenames in os.walk(
+        _slot_dir, onerror=_raise_unreadable, followlinks=False
+    ):
         _dirnames.sort()
         _rel_part = Path(_dirpath).relative_to(_slot_dir).as_posix()
         _rel_dir = slot.relpath if _rel_part == "." else f"{slot.relpath}/{_rel_part}"
@@ -210,6 +231,11 @@ def _write_slot(
                 raise ParameterLayerInvalid(
                     f"{_src}: only regular files and directories go into a parameter set"
                 )
+
+
+def _raise_unreadable(e: OSError) -> None:
+    # os.walk skips a directory it cannot list: its files would be left out silently
+    raise ParameterLayerInvalid(f"cannot read {e.filename}: {e.strerror}") from e
 
 
 class _HashedFile:
@@ -269,21 +295,27 @@ def read_parameter_layer(
 
     Every member must be a slot's directory, the opaque whiteout directly in it, or a
     regular file or directory below it, and every slot must have its directory and its
-    whiteout. The whiteout itself is not unpacked: under `extract_to` each slot's
-    directory is the whole of its new contents. Files are created exclusively, without
-    following links, owned by the caller (root on a device) and with the member's
-    permission bits.
+    whiteout. After the last member come the end-of-archive marker and zero padding
+    only. The whiteout itself is not unpacked: under `extract_to` each slot's
+    directory is the whole of its new contents. `extract_to` is an empty directory of
+    the caller's (or none yet); files are created exclusively, without following
+    links, owned by the caller (root on a device) and with the member's permission
+    bits, which directories get once their contents are in.
 
     `max_size` bounds the regular files' total size, for unpacking onto a tmpfs.
     `blob_digest` and `diff_id`, when given, are checked against the compressed blob
     and the uncompressed tar once read; what was unpacked before a mismatch is found
     is the caller's to discard. Returns what the layer holds, with its `diff_id`.
-    Raises ParameterLayerInvalid.
+    Raises ParameterLayerInvalid; OSError when unpacking fails, ValueError when
+    `extract_to` is not empty.
     """
+    if extract_to is not None and extract_to.exists() and any(extract_to.iterdir()):
+        raise ValueError(f"{extract_to} is not empty")
     _info = ParameterLayerInfo()
     _seen: set[str] = set()
     _dirs: set[str] = set()
     _opaque: set[str] = set()
+    _dir_modes: list[tuple[str, int]] = []
     _blob_in = _HashingReader(blob)
     _decompressed = zstandard.ZstdDecompressor().stream_reader(_blob_in, closefd=False)  # type: ignore[arg-type]
     _tar_in = _HashingReader(_decompressed)  # type: ignore[arg-type]
@@ -327,7 +359,8 @@ def read_parameter_layer(
                 if _member.isdir():
                     _dirs.add(_path)
                     if extract_to is not None:
-                        _mkdir(extract_to, _path, stat.S_IMODE(_member.mode))
+                        _mkdir(extract_to, _path)
+                        _dir_modes.append((_path, stat.S_IMODE(_member.mode)))
                 elif _member.isreg() and not _member.issparse():
                     if _path == _slot.relpath:
                         raise ParameterLayerInvalid(
@@ -356,11 +389,20 @@ def read_parameter_layer(
                         f"{_path!r}: only regular files and directories go into a "
                         "parameter set"
                     )
-        # the end-of-archive blocks and any padding after them are in the diff_id too
-        _tar_in.drain_hashing()
+            # where the end-of-archive marker starts: tarfile stops at the first zero
+            #   block, and also, quietly, at a header it cannot read past the first
+            _end = _tar.offset
+        # the marker and the padding after it are in the diff_id too
+        _tar_in.drain_hashing(up_to=_end + MAX_TAR_TRAILER)
         _blob_in.drain_hashing()
     except (tarfile.TarError, zstandard.ZstdError, EOFError) as e:
         raise ParameterLayerInvalid(f"not a zstd-compressed tar: {e}") from e
+    if _tar_in.nonzero_end > _end:
+        raise ParameterLayerInvalid(
+            "there is more than zero padding after the last member"
+        )
+    if _tar_in.size - _end < 2 * tarfile.BLOCKSIZE:
+        raise ParameterLayerInvalid("the tar ends without its end-of-archive marker")
 
     for _slot in slots:
         if _slot.relpath not in _dirs or _slot.name not in _opaque:
@@ -373,15 +415,29 @@ def read_parameter_layer(
     _digest = Sha256Digest(_blob_in.hash.hexdigest())
     if blob_digest is not None and _digest != blob_digest:
         raise ParameterLayerInvalid(f"the blob is {_digest}, not {blob_digest}")
+    if extract_to is not None:
+        # deepest first: a directory without write permission is filled already
+        for _path, _mode in reversed(_dir_modes):
+            os.chmod(extract_to / _path, _mode)
     return _info
 
 
-def _mkdir(root: Path, path: str, mode: int) -> None:
+def _mkdir(root: Path, path: str) -> None:
     _dst = root / path
     _dst.mkdir(mode=_DIR_MODE, parents=True, exist_ok=True)
     if _dst.is_symlink() or not _dst.is_dir():
         raise ParameterLayerInvalid(f"{_dst} is not a directory")
-    os.chmod(_dst, mode)
+
+
+def _write_all(fd: int, data: bytes) -> None:
+    # os.write may write less than asked (a filesystem running out of room does so
+    #   before it fails): what was hashed is what was read, so all of it is written
+    _view = memoryview(data)
+    while _view:
+        _written = os.write(fd, _view)
+        if _written <= 0:
+            raise OSError(f"write returned {_written}")
+        _view = _view[_written:]
 
 
 def _write_file(root: Path | None, path: str, mode: int, src: IO[bytes], hash_) -> None:
@@ -396,7 +452,7 @@ def _write_file(root: Path | None, path: str, mode: int, src: IO[bytes], hash_) 
         while _data := src.read(READ_SIZE):
             hash_.update(_data)
             if _fd is not None:
-                os.write(_fd, _data)
+                _write_all(_fd, _data)
         if _fd is not None:
             os.fchmod(_fd, mode)
     finally:

@@ -56,7 +56,7 @@ Media type: `application/vnd.tier4.ota.parameter-set.config.v1+json`
 - **`description`**, **`created`** *string* — OPTIONAL.
 - **`slots`** *array of objects* — OPTIONAL, default empty. The [slots](#slots) the set fills.
 - **`diff_ids`** *array of strings* — REQUIRED with a slot, one `sha256:…` per layer: the digest of the layer's uncompressed tar, as an OCI image config's `rootfs.diff_ids`. Empty for an empty set.
-- **`files`** *array of objects* — OPTIONAL. The set's regular files, each `{path, size, digest}` with `path` relative to `/` and under one of `slots`. When present it lists exactly the regular files of the layer, and a consumer MUST refuse a set whose `files` disagree with its layer; the layer is what is applied.
+- **`files`** *array of objects* — OPTIONAL. The set's regular files, each `{path, size, digest}` with `path` relative to `/` and under one of `slots`. When present, an empty list included, it lists exactly the regular files of the layer, and a consumer MUST refuse a set whose `files` disagree with its layer (by path, size and digest); the layer is what is applied.
 
 A consumer MUST refuse a config whose `version` differs from the manifest's, or which fills a slot while the manifest carries the empty descriptor, or the other way round.
 
@@ -64,17 +64,17 @@ A consumer MUST refuse a config whose `version` differs from the manifest's, or 
 {
   "schemaVersion": 1,
   "mediaType": "application/vnd.tier4.ota.parameter-set.config.v1+json",
-  "name": "j6_gen2",
+  "name": "sample_vehicle",
   "version": "6.1.0",
   "slots": [
     {
       "name": "individual_params",
-      "path": "/opt/autoware/vehicle/vehicle.j6_gen2/individual_params",
-      "apply": "/opt/autoware/vehicle/vehicle.j6_gen2/apply.sh"
+      "path": "/opt/autoware/vehicle/sample_vehicle/individual_params",
+      "apply": "/opt/autoware/vehicle/sample_vehicle/apply.sh"
     }
   ],
   "diff_ids": ["sha256:…"],
-  "files": [{ "path": "opt/autoware/vehicle/vehicle.j6_gen2/individual_params/…", "size": 812, "digest": "sha256:…" }]
+  "files": [{ "path": "opt/autoware/vehicle/sample_vehicle/individual_params/…", "size": 812, "digest": "sha256:…" }]
 }
 ```
 
@@ -83,12 +83,13 @@ A consumer MUST refuse a config whose `version` differs from the manifest's, or 
 A slot is a directory of the base's rootfs that the set replaces as a whole. The base ships the slot's default contents there, which is what the slot holds when no set fills it; the base declares nothing else.
 
 - **`name`** *string* — REQUIRED. 1 to 64 letters, digits, `_`, `.` or `-`, starting with a letter or digit.
-- **`path`** *string* — REQUIRED. The directory: absolute, normalized, not `/`.
+- **`path`** *string* — REQUIRED. The directory: absolute, normalized, not `/`, and no component of it starts with `.wh.` (which a layer reads as a whiteout).
 - **`apply`** *string* — REQUIRED. How a change to the slot takes effect: the absolute path of an executable of the base that the consumer runs once the slot's new contents are in place, and again once they are taken away; or `reboot`.
   The executable restarts what reads the slot, and fails when that does not come back; it changes no file.
 
 Names are unique, and no slot's `path` is inside, or the same as, another's.
 No slot is over what a consumer reads for itself (`/boot`, `/etc/fstab`, `/opt/ota`, `/usr/share/ota`: the same path, inside, or containing it), and no slot's `apply` is inside a slot: what the consumer runs is the base's, so that it is there to run again when the set is taken away.
+A consumer MAY refuse, the same way, a slot over other paths it reads for itself.
 
 ## Layer
 
@@ -100,8 +101,9 @@ Paths are relative to `/` and normalized (a leading `./` is allowed). For each s
 - the regular files and directories below it, each directory before what it holds.
 
 Nothing else: no member outside a slot, no symbolic or hard link, no device, FIFO or sparse file, no whiteout other than the slot's opaque one, no setuid, setgid or sticky bit, no path twice.
+After the last member comes the end-of-archive marker (two zero blocks), and after it zero padding only, 1 MiB at most for the marker and the padding together.
 Owners and times carry no meaning: a consumer creates the files as its own (root on a device) with the members' permission bits, the execute bits included.
-The builder writes members in a fixed order with owner `0:0` and time `0`, so the same slot contents always make the same layer.
+The builder writes members in a fixed order with owner `0:0` and time `0`, so the same slot contents always make the same tar, and so the same `diff_ids`; the compressed blob also depends on the compression level and the zstd library.
 
 ### Empty Set
 
@@ -127,6 +129,14 @@ A consumer:
 A full update to a base does not carry a stored set over: the ECU runs with the new base's defaults until a set is delivered again.
 
 A consumer whose layout cannot take a parameter set refuses the ECU's set, an empty one included, without changing anything: a release that names such an ECU fails there, so such an ECU is given base images only.
+
+## Security Considerations
+
+A set decides which directories of the running base it replaces and which executable of the base runs once they are replaced; the base does not limit them beyond the rules above.
+A consumer applies the set as root, lays its files with their execute bits, lays the set again on every boot, and does not go through a standby slot that a failed boot would fall back from.
+The signer of a parameter image is therefore trusted as much as the signer of a base image: a parameter image is signed under the same trust anchors, and with the same controls, as the base images of the ECUs it is for.
+
+A set is bound to an ECU by `ecu_id` and `ota_release_key` only, not to a vehicle: the release that delivers it decides which vehicles get it.
 
 ## Compatibility
 
