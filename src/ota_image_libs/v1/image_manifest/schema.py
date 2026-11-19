@@ -18,7 +18,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, NamedTuple
 
-from pydantic import Field
+from pydantic import Field, ValidationInfo
 
 from ota_image_libs.common import (
     AliasEnabledModel,
@@ -77,10 +77,20 @@ class ImageIDMixin:
         return ImageIdentifier(self.ecu_id, self.ota_release_key)
 
 
+def require_artifact_type(what: str, data: Any, info: ValidationInfo) -> Any:
+    """For a before-validator of a payload descriptor told apart from the file-based
+    payload's, with which it shares the mediaType, by its artifactType: an entry parsed
+    from JSON without artifactType is the file-based payload's, not this one."""
+    if info.mode == "json" and isinstance(data, dict) and "artifactType" not in data:
+        raise ValueError(f"{what} carries artifactType")
+    return data
+
+
 class PayloadManifestDescriptor(
     ImageIDMixin, MetaFileDescriptor[MetaFile_T], Generic[MetaFile_T]
 ):
-    """The index entry of an image payload, file-based or partition-based.
+    """The index entry of an image payload, of any kind: file-based, partition-based,
+    or a parameter set.
 
     Its annotations identify the payload, so they are required.
     """

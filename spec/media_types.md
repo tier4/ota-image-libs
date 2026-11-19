@@ -12,6 +12,8 @@ These media types are defined by the [OCI Image Spec](https://github.com/opencon
 | --- | --- |
 | `application/vnd.oci.image.index.v1+json` | [Image Index](image_index.md) |
 | `application/vnd.oci.image.manifest.v1+json` | [Image Manifest](image_manifest.md) |
+| `application/vnd.oci.image.layer.v1.tar+zstd` | the layer of a [parameter set](parameter_set.md#layer) |
+| `application/vnd.oci.empty.v1+json` | the OCI empty descriptor: the config of an [update agent package](update_agent_package.md), the layer of an [empty parameter set](parameter_set.md#empty-set) |
 
 ## OTA Image Media Types
 
@@ -45,6 +47,15 @@ These media types are specific to the [partition-based payload](partition_image.
 | `application/vnd.tier4.ota.partition-based-ota-image.data-image.v1+zstd` | the same, stored zstd-compressed |
 | `application/vnd.tier4.ota.partition-based-ota-image.firmware-package.v1` | a [firmware package](partition_image.md#firmware-entry) the platform's own firmware updater applies |
 | `application/vnd.tier4.ota.partition-based-ota-image.firmware-package.v1+zstd` | the same, stored zstd-compressed |
+
+## Parameter Set Media Types
+
+These media types are specific to the [parameter set](parameter_set.md).
+
+| Media Type | Usage |
+| --- | --- |
+| `application/vnd.tier4.ota.parameter-set.v1` | `artifactType` of a parameter set's image manifest |
+| `application/vnd.tier4.ota.parameter-set.config.v1+json` | [Parameter Set Config](parameter_set.md#parameter-set-config) |
 
 ## OTAClient Package Media Types
 

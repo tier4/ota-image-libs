@@ -38,8 +38,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _NO_FILE_TABLE_MSG = (
-    "image payload {image_id} is a partition-based OTA image: it carries partition "
-    "images, not files, and has no file_table."
+    "image payload {image_id} is not a file-based payload: a partition-based OTA "
+    "image or a parameter set carries no file_table."
 )
 
 

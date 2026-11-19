@@ -6,6 +6,7 @@ A Python library and CLI toolkit for creating, reading, verifying, and deploying
 
 - **OCI-compliant image specification** - Image index, manifest, and config schemas based on OCI standards
 - **Two payload kinds** - file-based (a rootfs, file by file, deduplicated) and partition-based (whole partition images or a vendor package, for read-only, integrity-protected roots)
+- **Parameter sets** - a few directories of an ECU's rootfs, delivered on their own in a parameter image and laid over the running base
 - **Cryptographic signing and verification** - ES256 JWT signatures with X.509 certificate chain validation
 - **Artifact packing and reading** - Reproducible ZIP-based artifact format with content-addressable blob storage
 - **Multi-threaded deployment** - Concurrent image payload extraction and rootfs deployment
@@ -73,6 +74,13 @@ ota-image-tools deploy-image \
   --image /path/to/ota-image.zip \
   --ecu-id my-ecu \
   --rootfs-dir /path/to/rootfs
+
+# Deploy an image with a parameter set laid over it, as a device runs the pair
+ota-image-tools deploy-image \
+  --image /path/to/ota-image.zip \
+  --parameter-image /path/to/parameter-image.zip \
+  --ecu-id my-ecu \
+  --rootfs-dir /path/to/rootfs
 ```
 
 ## Library Usage
@@ -100,6 +108,7 @@ The OTA image v1 specification is available in the [spec/](spec/) directory:
 | [image_manifest.md](spec/image_manifest.md) | Per-image payload manifest |
 | [image_config.md](spec/image_config.md) | Per-image configuration schema (file-based payload) |
 | [partition_image.md](spec/partition_image.md) | Partition-based payload and its configuration |
+| [parameter_set.md](spec/parameter_set.md) | Parameter set: a few directories of an ECU's rootfs, delivered in a parameter image |
 | [sys_config.md](spec/sys_config.md) | System-level configuration |
 | [file_table.md](spec/file_table.md) | SQLite database schema for filesystem metadata |
 | [resource_table.md](spec/resource_table.md) | SQLite database schema for blob storage manifest |
