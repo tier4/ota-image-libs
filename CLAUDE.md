@@ -134,7 +134,7 @@ Consult these when working on schemas or adding new features rather than reverse
 - `image_spec.md` — Overall OTA image specification overview
 - `image_index.md`, `image_manifest.md`, `image_config.md`, `sys_config.md` — Per-component schemas
 - `partition_image.md` — Partition-based payload, its config, data images, firmware and the delta format
-- `parameter_set.md` — Parameter set: a base's parameter slots delivered in a parameter image, the layer, and how a consumer applies it
+- `parameter_set.md` — Parameter set: an ECU's slots delivered in a parameter image, the layer, and how a consumer applies it
 - `file_table.md`, `resource_table.md` — SQLite database schemas
 - `annotations.md` — Standard annotation key definitions
 - `index_jwt.md` — JWT signing specification

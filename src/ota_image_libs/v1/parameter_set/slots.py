@@ -11,19 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Parameter slots: the directories a base image lets a parameter set replace.
+"""Parameter slots: the directories of the running base a parameter set replaces.
 
-A base image declares them in its image config (`parameter_slots`); a parameter set
-names the ones it fills. Kept apart from the parameter set schema so that the image
-configs can import it without importing the manifests. Specification:
-spec/parameter_set.md.
+A parameter set names the slots it fills, each with how a change to it takes effect
+(`apply`). The base declares nothing: a slot is a directory the base ships, and its
+contents there are what the slot holds when no set fills it. Kept apart from the
+parameter set schema so that the layer can import it without the manifests.
+Specification: spec/parameter_set.md.
 """
 
 from __future__ import annotations
 
+import os
 import posixpath
 import re
+import stat
 from collections.abc import Iterable
+from pathlib import Path
 
 from pydantic import model_validator
 from typing_extensions import Self
@@ -51,7 +55,8 @@ def check_absolute_path(what: str, path: str) -> None:
 
 
 class ParameterSlotRef(AliasEnabledModel):
-    """A slot as a parameter set names it: its name and the directory it replaces."""
+    """A slot's name and the directory it replaces: what the layer is written and
+    read against."""
 
     name: str
     path: str
@@ -73,11 +78,11 @@ class ParameterSlotRef(AliasEnabledModel):
 
 
 class ParameterSlot(ParameterSlotRef):
-    """A slot as a base image declares it: also how a change to it takes effect.
+    """A slot as a parameter set fills it: also how a change to it takes effect.
 
-    `apply` is an executable in the base image that the consumer runs once the slot's
-    new contents are in place, or `reboot`. It restarts what reads the parameters and
-    changes no file.
+    `apply` is an executable of the running base, outside every slot, that the
+    consumer runs once the slot's new contents are in place, and again once they are
+    taken away; or `reboot`. It restarts what reads the slot and changes no file.
     """
 
     apply: str
@@ -116,10 +121,10 @@ def _overlaps(a: str, b: str) -> bool:
     return a == b or a.startswith(b + "/") or b.startswith(a + "/")
 
 
-def check_base_slots(what: str, slots: Iterable[ParameterSlot]) -> None:
-    """The slots a base declares: disjoint, none over what the consumer reads for
-    itself, and no `apply` inside a slot, where a set could replace it. A set
-    carries files only; what runs is the base's."""
+def check_slots(what: str, slots: Iterable[ParameterSlot]) -> None:
+    """The slots a set fills: disjoint, none over what the consumer reads for itself,
+    and no `apply` inside a slot, where a set would replace it: what runs as the
+    consumer is the base's, and it is there to run again when the set is gone."""
     _slots = list(slots)
     check_slots_disjoint(what, _slots)
     for _slot in _slots:
@@ -135,3 +140,40 @@ def check_base_slots(what: str, slots: Iterable[ParameterSlot]) -> None:
                     f"{what}: slot {_slot.name!r}'s apply {_slot.apply} is in slot "
                     f"{_other.name!r} ({_other.path}), which a set replaces"
                 )
+
+
+def check_slots_in_tree(root: Path | str, slots: Iterable[ParameterSlot]) -> None:
+    """The base at `root` (a deployed tree, or `/` on the device) has what the slots
+    need: each slot's directory, and each `apply` as an executable regular file.
+
+    Both are taken at their real paths: a symbolic link on the way could lead out of
+    the tree, or put the `apply` inside a slot after all. Raises ValueError.
+    """
+    _root = os.path.realpath(root)
+    for _slot in slots:
+        _dir = os.path.join(_root, _slot.relpath)
+        if os.path.realpath(_dir) != _dir:
+            raise ValueError(
+                f"slot {_slot.name!r}: {_slot.path} is behind a symbolic link"
+            )
+        if not os.path.isdir(_dir):
+            raise ValueError(
+                f"slot {_slot.name!r}: the base has no directory {_slot.path}"
+            )
+        if _slot.apply == APPLY_REBOOT:
+            continue
+        _apply = os.path.join(_root, _slot.apply[1:])
+        if os.path.realpath(_apply) != _apply:
+            raise ValueError(
+                f"slot {_slot.name!r}: apply {_slot.apply} is behind a symbolic link"
+            )
+        try:
+            _st = os.stat(_apply)
+        except FileNotFoundError:
+            raise ValueError(
+                f"slot {_slot.name!r}: the base has no apply {_slot.apply}"
+            ) from None
+        if not stat.S_ISREG(_st.st_mode) or not _st.st_mode & 0o111:
+            raise ValueError(
+                f"slot {_slot.name!r}: apply {_slot.apply} is not an executable file"
+            )

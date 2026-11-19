@@ -14,33 +14,28 @@
 """Lay a parameter set over a deployed base tree, as a device would see it.
 
 The result is the tree a vehicle runs with the set applied: each slot the set fills
-holds the set's files and nothing of the base's, every other slot the base's defaults.
-It is deterministic, so a tree made here can be evaluated or built into a full image,
-and what was tested is told apart from what runs by the two manifests' digests.
+holds the set's files and nothing of the base's, everything else is the base's.
+It is deterministic, so a tree made here can be evaluated, the pair (base, set) being
+what a release of the two is tested as.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 from pathlib import Path
 
-from ota_image_libs.common.oci_spec import Sha256Digest
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier
 from ota_image_libs.v1.parameter_set.layer import read_parameter_layer
-from ota_image_libs.v1.parameter_set.schema import (
-    ParameterSetConfig,
-    check_against_base,
-)
-from ota_image_libs.v1.parameter_set.slots import ParameterSlot
+from ota_image_libs.v1.parameter_set.schema import ParameterSetConfig
+from ota_image_libs.v1.parameter_set.slots import check_slots_in_tree
 
 logger = logging.getLogger(__name__)
 
 
 class ParameterSetNotApplicable(Exception):
-    """The parameter image has no set for this base, or one that does not fit it."""
+    """The parameter image has no set for this ECU, or one the base has no room for."""
 
 
 def overlay_parameter_set(
@@ -48,14 +43,12 @@ def overlay_parameter_set(
     rootfs_dir: Path,
     parameter_image: Path,
     image_id: ImageIdentifier,
-    base_manifest_digest: Sha256Digest,
-    base_slots: list[ParameterSlot],
     tmp_dir: Path,
 ) -> ParameterSetConfig:
     """Replace the slots the set of `image_id` in `parameter_image` fills under
-    `rootfs_dir`, a tree deployed from the base whose payload manifest has
-    `base_manifest_digest` and which declares `base_slots`. Returns the set's config.
+    `rootfs_dir`, a tree deployed from a base. Returns the set's config.
 
+    As on a device, the base must have each slot's directory and each `apply`.
     Raises ParameterSetNotApplicable, or ParameterLayerInvalid for a broken layer.
     """
     with OTAImageArtifactReader(parameter_image) as _reader:
@@ -70,18 +63,13 @@ def overlay_parameter_set(
             )
         try:
             _config = _reader.get_parameter_set_config(_manifest)
-            _filled = check_against_base(
-                _manifest,
-                _config,
-                base_manifest_digest=base_manifest_digest,
-                base_slots=base_slots,
-            )
+            check_slots_in_tree(rootfs_dir, _config.slots)
         except ValueError as e:
             raise ParameterSetNotApplicable(str(e)) from e
 
         logger.info(f"parameter set {_config.name} {_config.version} for {image_id}")
         if (_layer := _manifest.layer) is None:
-            logger.info("an empty set: every slot keeps the base's defaults")
+            logger.info("an empty set: the base is left as it is")
             return _config
 
         _unpacked = tmp_dir / "parameter_set"
@@ -95,22 +83,10 @@ def overlay_parameter_set(
                 diff_id=_config.diff_ids[0],
             )
 
-    _root = rootfs_dir.resolve()
-    for _slot in _filled:
+    for _slot in _config.slots:
+        # checked above: a real directory of the tree, not behind a link
         _dst = rootfs_dir / _slot.relpath
-        # resolved here, not in the tree's root: a link on the way would lead out of
-        #   the tree, onto the machine this runs on
-        if Path(os.path.realpath(_dst)) != _root / _slot.relpath:
-            raise ParameterSetNotApplicable(
-                f"slot {_slot.name!r}: {_dst} is behind a symbolic link"
-            )
-        if _dst.exists() and not _dst.is_dir():
-            raise ParameterSetNotApplicable(
-                f"slot {_slot.name!r}: {_dst} is not a directory"
-            )
-        if _dst.exists():
-            shutil.rmtree(_dst)
-        _dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(_dst)
         shutil.move(str(_unpacked / _slot.relpath), _dst)
         logger.info(f"slot {_slot.name!r} at {_slot.path} replaced")
     logger.info(

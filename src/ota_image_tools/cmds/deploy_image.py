@@ -116,8 +116,7 @@ def deploy_image_cmd_args(
     deploy_image_arg_parser.add_argument(
         "--parameter-image",
         help="A parameter image artifact whose parameter set for the same ECU ID and "
-        "release key is laid over the deployed rootfs, as a device applies it. "
-        "The set must have been made for this base image.",
+        "release key is laid over the deployed rootfs, as a device applies it.",
     )
     deploy_image_arg_parser.set_defaults(handler=measure_timecost(deploy_image_cmd))
 
@@ -210,15 +209,11 @@ def deploy_image_cmd(args: Namespace) -> None:  # pragma: no cover
         logger.info(f"finish deploying system image with {image_id=} to {rootfs_dir=}!")
 
         if args.parameter_image:
-            _base_descriptor = _image_index.find_image(image_id)
-            assert _base_descriptor
             try:
                 _set_config = overlay_parameter_set(
                     rootfs_dir=rootfs_dir,
                     parameter_image=Path(args.parameter_image),
                     image_id=image_id,
-                    base_manifest_digest=_base_descriptor.digest,
-                    base_slots=image_config.parameter_slots or [],
                     tmp_dir=tmpdir,
                 )
             except (ParameterSetNotApplicable, ParameterLayerInvalid) as e:

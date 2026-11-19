@@ -100,7 +100,7 @@ The OTA image v1 specification is available in the [spec/](spec/) directory:
 | [image_manifest.md](spec/image_manifest.md) | Per-image payload manifest |
 | [image_config.md](spec/image_config.md) | Per-image configuration schema (file-based payload) |
 | [partition_image.md](spec/partition_image.md) | Partition-based payload and its configuration |
-| [parameter_set.md](spec/parameter_set.md) | Parameter set: a base's parameter slots, delivered in a parameter image |
+| [parameter_set.md](spec/parameter_set.md) | Parameter set: a few directories of an ECU's rootfs, delivered in a parameter image |
 | [sys_config.md](spec/sys_config.md) | System-level configuration |
 | [file_table.md](spec/file_table.md) | SQLite database schema for filesystem metadata |
 | [resource_table.md](spec/resource_table.md) | SQLite database schema for blob storage manifest |

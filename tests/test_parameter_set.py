@@ -37,7 +37,6 @@ from ota_image_libs.v1.annotation_keys import (
     PLATFORM_ECU,
 )
 from ota_image_libs.v1.consts import IMAGE_INDEX_FNAME, RESOURCE_DIR
-from ota_image_libs.v1.image_config.schema import ImageConfig
 from ota_image_libs.v1.image_index.schema import ImageIndex
 from ota_image_libs.v1.image_manifest.schema import (
     ImageIdentifier,
@@ -48,10 +47,8 @@ from ota_image_libs.v1.media_types import (
     IMAGE_MANIFEST,
     OCI_EMPTY_JSON,
     OCI_LAYER_TAR_ZSTD,
-    OTA_IMAGE_ARTIFACT,
     PARAMETER_SET_ARTIFACT,
     PARAMETER_SET_CONFIG_JSON,
-    PARTITION_IMAGE_ARTIFACT,
 )
 from ota_image_libs.v1.parameter_set.layer import (
     OPAQUE_WHITEOUT,
@@ -61,18 +58,16 @@ from ota_image_libs.v1.parameter_set.layer import (
 )
 from ota_image_libs.v1.parameter_set.schema import (
     EmptyDescriptor,
-    FileBasedSubjectDescriptor,
     ParameterLayerDescriptor,
     ParameterSetConfig,
     ParameterSetManifest,
-    PartitionBasedSubjectDescriptor,
-    check_against_base,
 )
 from ota_image_libs.v1.parameter_set.slots import (
     ParameterSlot,
     ParameterSlotRef,
-    check_base_slots,
+    check_slots,
     check_slots_disjoint,
+    check_slots_in_tree,
 )
 from ota_image_libs.v1.update_agent_package.schema import EMPTY_JSON
 from ota_image_tools.cmds.list_image import _list_image_from_artifact, _render_output
@@ -83,17 +78,9 @@ from ota_image_tools.libs.deploy_parameter_set import (
 
 SLOT_PATH = "/opt/autoware/vehicle/vehicle.j6_gen2/individual_params"
 OTHER_SLOT_PATH = "/opt/autoware/vehicle/vehicle.j6_gen2/j6_gen2_launch"
-SLOT = ParameterSlotRef(name="individual_params", path=SLOT_PATH)
-OTHER_SLOT = ParameterSlotRef(name="launch", path=OTHER_SLOT_PATH)
-BASE_SLOTS = [
-    ParameterSlot(
-        name="individual_params",
-        path=SLOT_PATH,
-        apply="/opt/autoware/bin/apply-parameter-set",
-    ),
-    ParameterSlot(name="launch", path=OTHER_SLOT_PATH, apply="reboot"),
-]
-BASE_MANIFEST_DIGEST = Sha256Digest(sha256(b"the base payload manifest").hexdigest())
+APPLY = "/opt/autoware/vehicle/vehicle.j6_gen2/apply.sh"
+SLOT = ParameterSlot(name="individual_params", path=SLOT_PATH, apply=APPLY)
+OTHER_SLOT = ParameterSlot(name="launch", path=OTHER_SLOT_PATH, apply="reboot")
 ECU = "autoware"
 IMAGE_ID = ImageIdentifier(ECU, OTAReleaseKey.dev)
 MANIFEST_ANNOTATIONS = {
@@ -154,11 +141,13 @@ def slot_members(slot: ParameterSlotRef = SLOT):
 
 
 class TestSlots:
-    def test_a_base_declares_a_slot_with_how_it_takes_effect(self):
+    def test_a_slot_says_how_a_change_to_it_takes_effect(self):
         _slot = ParameterSlot.model_validate(
             {"name": "individual_params", "path": SLOT_PATH, "apply": "reboot"}
         )
         assert _slot.relpath == SLOT_PATH[1:]
+        with pytest.raises(ValidationError):
+            ParameterSlot.model_validate({"name": "s", "path": SLOT_PATH})
 
     @pytest.mark.parametrize(
         "path",
@@ -204,14 +193,14 @@ class TestSlots:
             "/etc",
         ),
     )
-    def test_a_base_slot_is_not_over_what_the_consumer_reads(self, path):
+    def test_a_slot_is_not_over_what_the_consumer_reads(self, path):
         with pytest.raises(ValueError, match="reads for itself"):
-            check_base_slots("t", [ParameterSlot(name="s", path=path, apply="reboot")])
+            check_slots("t", [ParameterSlot(name="s", path=path, apply="reboot")])
 
-    def test_a_base_slots_apply_is_not_inside_a_slot(self):
-        """A set carries files only: it could replace an apply inside a slot."""
+    def test_a_slots_apply_is_not_inside_a_slot(self):
+        """What runs is the base's: inside a slot, a set would replace it."""
         with pytest.raises(ValueError, match="which a set replaces"):
-            check_base_slots(
+            check_slots(
                 "t",
                 [
                     ParameterSlot(
@@ -220,7 +209,7 @@ class TestSlots:
                 ],
             )
         with pytest.raises(ValueError, match="which a set replaces"):
-            check_base_slots(
+            check_slots(
                 "t",
                 [
                     ParameterSlot(
@@ -229,39 +218,7 @@ class TestSlots:
                     ParameterSlot(name="b", path=OTHER_SLOT_PATH, apply="reboot"),
                 ],
             )
-        check_base_slots("t", BASE_SLOTS)
-
-    def test_the_image_config_declares_them_and_an_old_one_has_none(self):
-        _fixture = Path(__file__).parent / "data" / "ota-image.zip"
-        with ZipFile(_fixture) as zf:
-            _index = ImageIndex.parse_metafile(zf.read(IMAGE_INDEX_FNAME).decode())
-            _descriptor = next(
-                d for d in _index.manifests if isinstance(d, ImageManifest.Descriptor)
-            )
-            _manifest = ImageManifest.parse_metafile(
-                zf.read(f"{RESOURCE_DIR}/{_descriptor.digest.digest_hex}").decode()
-            )
-            _raw = json.loads(
-                zf.read(f"{RESOURCE_DIR}/{_manifest.config.digest.digest_hex}")
-            )
-        _plain = ImageConfig.model_validate_json(json.dumps(_raw))
-        assert _plain.parameter_slots is None
-        assert "parameter_slots" not in json.loads(_plain.export_metafile())
-
-        _raw["parameter_slots"] = [_s.model_dump() for _s in BASE_SLOTS]
-        _config = ImageConfig.parse_metafile(json.dumps(_raw))
-        assert _config.parameter_slots == BASE_SLOTS
-        assert json.loads(_config.export_metafile())["parameter_slots"][0] == {
-            "name": "individual_params",
-            "path": SLOT_PATH,
-            "apply": "/opt/autoware/bin/apply-parameter-set",
-        }
-
-        _raw["parameter_slots"].append(
-            {"name": "inner", "path": f"{SLOT_PATH}/x", "apply": "reboot"}
-        )
-        with pytest.raises(ValidationError, match="inside"):
-            ImageConfig.parse_metafile(json.dumps(_raw))
+        check_slots("t", [SLOT, OTHER_SLOT])
 
 
 #
@@ -277,7 +234,7 @@ def config_dict(**kw) -> dict:
         "mediaType": PARAMETER_SET_CONFIG_JSON,
         "name": "j6_gen2_params",
         "version": "2026.10.29-1",
-        "slots": [{"name": SLOT.name, "path": SLOT.path}],
+        "slots": [{"name": SLOT.name, "path": SLOT.path, "apply": APPLY}],
         "diff_ids": [DIFF_ID],
         "files": [
             {
@@ -291,9 +248,7 @@ def config_dict(**kw) -> dict:
     return _d
 
 
-def manifest_dict(
-    *, empty: bool = False, subject_type: str = OTA_IMAGE_ARTIFACT
-) -> dict:
+def manifest_dict(*, empty: bool = False) -> dict:
     _layer = (
         {
             "mediaType": OCI_EMPTY_JSON,
@@ -317,12 +272,6 @@ def manifest_dict(
             "size": 640,
         },
         "layers": [_layer],
-        "subject": {
-            "mediaType": IMAGE_MANIFEST,
-            "artifactType": subject_type,
-            "digest": str(BASE_MANIFEST_DIGEST),
-            "size": 818,
-        },
         "annotations": MANIFEST_ANNOTATIONS,
     }
 
@@ -365,8 +314,33 @@ class TestConfig:
             pytest.param({"version": "1 0"}, id="version_with_a_space"),
             pytest.param({"name": ""}, id="no_name"),
             pytest.param(
-                {"slots": [{"name": "a", "path": "/x"}, {"name": "b", "path": "/x/y"}]},
+                {
+                    "slots": [
+                        {"name": "a", "path": "/x", "apply": "reboot"},
+                        {"name": "b", "path": "/x/y", "apply": "reboot"},
+                    ]
+                },
                 id="nested_slots",
+            ),
+            pytest.param(
+                {"slots": [{"name": SLOT.name, "path": SLOT.path}]},
+                id="slot_without_apply",
+            ),
+            pytest.param(
+                {
+                    "slots": [
+                        {
+                            "name": SLOT.name,
+                            "path": SLOT.path,
+                            "apply": f"{SLOT_PATH}/a",
+                        }
+                    ]
+                },
+                id="apply_inside_the_slot",
+            ),
+            pytest.param(
+                {"slots": [{"name": "s", "path": "/opt/ota/x", "apply": "reboot"}]},
+                id="slot_over_the_consumers_own",
             ),
         ),
     )
@@ -376,27 +350,19 @@ class TestConfig:
 
 
 class TestManifest:
-    def test_a_manifest_carries_its_artifact_type_and_subject(self):
+    def test_a_manifest_carries_its_artifact_type_and_names_no_base(self):
         _manifest = ParameterSetManifest.parse_metafile(json.dumps(manifest_dict()))
-        assert isinstance(_manifest.subject, FileBasedSubjectDescriptor)
-        assert _manifest.subject.digest == BASE_MANIFEST_DIGEST
         assert isinstance(_manifest.layer, ParameterLayerDescriptor)
         assert _manifest.version == "2026.10.29-1"
         assert _manifest.image_identifier == IMAGE_ID
 
         _exported = json.loads(_manifest.export_metafile())
         assert _exported["artifactType"] == PARAMETER_SET_ARTIFACT
-        assert _exported["subject"]["artifactType"] == OTA_IMAGE_ARTIFACT
+        assert "subject" not in _exported
         assert (
             ParameterSetManifest.parse_metafile(_manifest.export_metafile())
             == _manifest
         )
-
-    def test_a_set_for_a_partition_based_base(self):
-        _manifest = ParameterSetManifest.parse_metafile(
-            json.dumps(manifest_dict(subject_type=PARTITION_IMAGE_ARTIFACT))
-        )
-        assert isinstance(_manifest.subject, PartitionBasedSubjectDescriptor)
 
     def test_an_empty_set_carries_the_empty_descriptor(self):
         _manifest = ParameterSetManifest.parse_metafile(
@@ -404,15 +370,6 @@ class TestManifest:
         )
         assert _manifest.layer is None
         assert isinstance(_manifest.layers[0], EmptyDescriptor)
-
-    def test_a_subject_names_the_kind_of_its_base(self):
-        _raw = manifest_dict()
-        del _raw["subject"]["artifactType"]
-        with pytest.raises(ValidationError):
-            ParameterSetManifest.parse_metafile(json.dumps(_raw))
-        _raw["subject"]["artifactType"] = PARAMETER_SET_ARTIFACT
-        with pytest.raises(ValidationError):
-            ParameterSetManifest.parse_metafile(json.dumps(_raw))
 
     @pytest.mark.parametrize("layers", (0, 2))
     def test_a_set_has_exactly_one_layer(self, layers):
@@ -729,50 +686,59 @@ class TestLayer:
 
 
 #
-# ------ the set against its base ------ #
+# ------ the slots in the running base ------ #
 #
 
 
-class TestAgainstTheBase:
-    def setup_method(self):
-        self.manifest = ParameterSetManifest.parse_metafile(json.dumps(manifest_dict()))
-        self.config = ParameterSetConfig.parse_metafile(json.dumps(config_dict()))
+def base_tree_at(root: Path) -> Path:
+    """A base with both slots' directories and SLOT's apply."""
+    (root / SLOT.relpath).mkdir(parents=True)
+    (root / OTHER_SLOT.relpath).mkdir(parents=True)
+    _apply = root / APPLY[1:]
+    _apply.write_text("#!/bin/sh\n")
+    _apply.chmod(0o755)
+    return root
 
-    def test_a_set_for_this_base_fills_its_declared_slots(self):
-        assert check_against_base(
-            self.manifest,
-            self.config,
-            base_manifest_digest=BASE_MANIFEST_DIGEST,
-            base_slots=BASE_SLOTS,
-        ) == [BASE_SLOTS[0]]
 
-    def test_a_set_for_another_base_is_refused(self):
-        with pytest.raises(ValueError, match="for base"):
-            check_against_base(
-                self.manifest,
-                self.config,
-                base_manifest_digest=Sha256Digest("0" * 64),
-                base_slots=BASE_SLOTS,
-            )
+class TestInTheTree:
+    def test_a_base_with_the_slots_and_the_apply(self, tmp_path: Path):
+        check_slots_in_tree(base_tree_at(tmp_path / "rootfs"), [SLOT, OTHER_SLOT])
 
-    def test_a_slot_the_base_does_not_declare_is_refused(self):
-        with pytest.raises(ValueError, match="declares no slot"):
-            check_against_base(
-                self.manifest,
-                self.config,
-                base_manifest_digest=BASE_MANIFEST_DIGEST,
-                base_slots=BASE_SLOTS[1:],
-            )
+    def test_a_slot_the_base_has_no_directory_for(self, tmp_path: Path):
+        _root = base_tree_at(tmp_path / "rootfs")
+        shutil.rmtree(_root / SLOT.relpath)
+        with pytest.raises(ValueError, match="no directory"):
+            check_slots_in_tree(_root, [SLOT])
+        (_root / SLOT.relpath).write_text("a file\n")
+        with pytest.raises(ValueError, match="no directory"):
+            check_slots_in_tree(_root, [SLOT])
 
-    def test_a_slot_at_another_path_is_refused(self):
-        _moved = [BASE_SLOTS[0].model_copy(update={"path": "/opt/elsewhere"})]
-        with pytest.raises(ValueError, match="in the base"):
-            check_against_base(
-                self.manifest,
-                self.config,
-                base_manifest_digest=BASE_MANIFEST_DIGEST,
-                base_slots=_moved,
-            )
+    def test_an_apply_the_base_does_not_have(self, tmp_path: Path):
+        _root = base_tree_at(tmp_path / "rootfs")
+        (_root / APPLY[1:]).chmod(0o644)
+        with pytest.raises(ValueError, match="not an executable"):
+            check_slots_in_tree(_root, [SLOT])
+        (_root / APPLY[1:]).unlink()
+        with pytest.raises(ValueError, match="no apply"):
+            check_slots_in_tree(_root, [SLOT])
+        # reboot needs no file
+        check_slots_in_tree(_root, [OTHER_SLOT])
+
+    def test_links_on_the_way_are_refused(self, tmp_path: Path):
+        """A link could lead out of the tree, or into a slot."""
+        _root = base_tree_at(tmp_path / "rootfs")
+        _real = _root / "opt" / "autoware" / "real_vehicle"
+        os.replace(_root / SLOT.relpath, _real)
+        (_root / SLOT.relpath).symlink_to(_real)
+        with pytest.raises(ValueError, match="symbolic link"):
+            check_slots_in_tree(_root, [SLOT])
+
+        _root = base_tree_at(tmp_path / "rootfs2")
+        _target = _root / OTHER_SLOT.relpath / "apply.sh"
+        os.replace(_root / APPLY[1:], _target)
+        (_root / APPLY[1:]).symlink_to(_target)
+        with pytest.raises(ValueError, match="symbolic link"):
+            check_slots_in_tree(_root, [SLOT])
 
 
 #
@@ -781,8 +747,8 @@ class TestAgainstTheBase:
 
 
 def build_parameter_image(tmp_path: Path, *, tree: Path | None) -> Path:
-    """A parameter image artifact with one set for ECU, for the base digest above;
-    an empty set when `tree` is None."""
+    """A parameter image artifact with one set for ECU; an empty set when `tree` is
+    None."""
     _image_root = tmp_path / "parameter_image"
     _resource_dir = _image_root / RESOURCE_DIR
     _resource_dir.mkdir(parents=True)
@@ -808,7 +774,6 @@ def build_parameter_image(tmp_path: Path, *, tree: Path | None) -> Path:
     _manifest = ParameterSetManifest(
         config=_config_descriptor,
         layers=[_layer],
-        subject=FileBasedSubjectDescriptor(size=818, digest=BASE_MANIFEST_DIGEST),
         annotations=ParameterSetManifest.Annotations.model_validate(
             MANIFEST_ANNOTATIONS
         ),
@@ -843,6 +808,8 @@ class TestOverlay:
         (_slot / "only_in_the_base").write_text("stale\n")
         (_root / OTHER_SLOT.relpath).mkdir(parents=True)
         (_root / OTHER_SLOT.relpath / "launch.xml").write_text("<launch/>\n")
+        (_root / APPLY[1:]).write_text("#!/bin/sh\n")
+        (_root / APPLY[1:]).chmod(0o755)
         return _root
 
     def overlay(self, tmp_path: Path, rootfs: Path, artifact: Path, **kw):
@@ -852,8 +819,6 @@ class TestOverlay:
             rootfs_dir=rootfs,
             parameter_image=artifact,
             image_id=IMAGE_ID,
-            base_manifest_digest=BASE_MANIFEST_DIGEST,
-            base_slots=BASE_SLOTS,
             tmp_dir=_tmp,
         )
         _args.update(kw)
@@ -881,15 +846,13 @@ class TestOverlay:
         assert self.overlay(tmp_path, base_tree, _artifact).is_empty
         assert (base_tree / SLOT.relpath / "only_in_the_base").exists()
 
-    def test_a_set_for_another_base_is_not_laid(self, tmp_path: Path, base_tree: Path):
+    def test_a_base_without_the_apply_is_not_laid(
+        self, tmp_path: Path, base_tree: Path
+    ):
+        (base_tree / APPLY[1:]).unlink()
         _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))
-        with pytest.raises(ParameterSetNotApplicable, match="for base"):
-            self.overlay(
-                tmp_path,
-                base_tree,
-                _artifact,
-                base_manifest_digest=Sha256Digest("0" * 64),
-            )
+        with pytest.raises(ParameterSetNotApplicable, match="no apply"):
+            self.overlay(tmp_path, base_tree, _artifact)
         assert (base_tree / SLOT.relpath / "only_in_the_base").exists()
 
     def test_a_slot_behind_a_link_is_not_followed_out_of_the_tree(

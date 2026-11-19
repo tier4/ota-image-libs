@@ -52,7 +52,6 @@ Media type: `application/vnd.tier4.ota.partition-based-ota-image.config.v1+json`
   Media type `application/vnd.tier4.ota.partition-based-ota-image.vendor-package.v1`, or `…vendor-package.v1+zstd` for one stored [compressed](#compressed-blobs); the OPTIONAL annotation `vnd.tier4.ota.partition-image.vendor-package.format` names the package format.
 - **`sys_config`** *[OCI descriptor](https://github.com/opencontainers/image-spec/blob/main/descriptor.md)* — OPTIONAL, a [sys config](sys_config.md).
   Informational for a partition-based payload, see [sys_config.md](sys_config.md).
-- **`parameter_slots`** *array of objects* — OPTIONAL. The directories a [parameter set](parameter_set.md#parameter-slots) may replace, as in the file-based payload's image config.
 - **`labels`** *string-string map* — REQUIRED: `vnd.tier4.image.base-image`, `vnd.tier4.ota.image.blobs-count` and `vnd.tier4.ota.image.blobs-size` (the blobs of this payload); OPTIONAL `vnd.tier4.image.os`, `vnd.tier4.image.os.version`.
 
 ### Partition Entry

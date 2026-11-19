@@ -11,18 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Schemas of the parameter set: the files of a base image's parameter slots, delivered
-in an OTA image of their own and laid over the running base instead of written into a
-standby slot.
+"""Schemas of the parameter set: the files of a few directories of the rootfs (its
+slots), delivered in an OTA image of their own and laid over the running base instead
+of written into a standby slot.
 
-One OCI layer (tar+zstd) of the slots' directories, bound to the one base payload it
-was made for by the OCI 1.1 `subject`. Specification: spec/parameter_set.md.
+One OCI layer (tar+zstd) of the slots' directories, for one ECU. The set names its
+slots and how a change to each takes effect; it names no base: which base it suits is
+decided where the release is evaluated. Specification: spec/parameter_set.md.
 """
 
 from __future__ import annotations
 
 import posixpath
 import re
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import Field, ValidationInfo, computed_field, model_validator
@@ -52,14 +54,12 @@ from ota_image_libs.v1.image_manifest.schema import (
 from ota_image_libs.v1.media_types import (
     IMAGE_MANIFEST,
     OCI_LAYER_TAR_ZSTD,
-    OTA_IMAGE_ARTIFACT,
     PARAMETER_SET_ARTIFACT,
     PARAMETER_SET_CONFIG_JSON,
-    PARTITION_IMAGE_ARTIFACT,
 )
 from ota_image_libs.v1.update_agent_package.schema import EmptyConfigDescriptor
 
-from .slots import SLOT_NAME, ParameterSlot, ParameterSlotRef, check_slots_disjoint
+from .slots import SLOT_NAME, ParameterSlot, ParameterSlotRef, check_slots
 
 VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}")
 """A set's version: reported as it is, so nothing that would need escaping."""
@@ -73,7 +73,7 @@ def _require_artifact_type(cls: type, data: Any, info: ValidationInfo) -> Any:
     return data
 
 
-def slot_of(path: str, slots: list[ParameterSlotRef]) -> ParameterSlotRef | None:
+def slot_of(path: str, slots: Sequence[ParameterSlotRef]) -> ParameterSlotRef | None:
     """The slot a path relative to `/` belongs to: the slot's directory or below it."""
     for _s in slots:
         if path == _s.relpath or path.startswith(_s.relpath + "/"):
@@ -97,38 +97,6 @@ EmptyDescriptor = EmptyConfigDescriptor
 
 
 #
-# ------ the subject ------ #
-#
-
-
-class FileBasedSubjectDescriptor(OCIDescriptor):
-    """The base payload a set was made for, a file-based one."""
-
-    MediaType = MediaType[IMAGE_MANIFEST]
-    ArtifactType = ArtifactType[OTA_IMAGE_ARTIFACT]
-
-    @model_validator(mode="before")
-    @classmethod
-    def _artifact_type_present(cls, data: Any, info: ValidationInfo) -> Any:
-        return _require_artifact_type(cls, data, info)
-
-
-class PartitionBasedSubjectDescriptor(OCIDescriptor):
-    """The base payload a set was made for, a partition-based one."""
-
-    MediaType = MediaType[IMAGE_MANIFEST]
-    ArtifactType = ArtifactType[PARTITION_IMAGE_ARTIFACT]
-
-    @model_validator(mode="before")
-    @classmethod
-    def _artifact_type_present(cls, data: Any, info: ValidationInfo) -> Any:
-        return _require_artifact_type(cls, data, info)
-
-
-SubjectDescriptor = FileBasedSubjectDescriptor | PartitionBasedSubjectDescriptor
-
-
-#
 # ------ the config ------ #
 #
 
@@ -143,8 +111,8 @@ class ParameterSetFileEntry(AliasEnabledModel):
 
 
 class ParameterSetConfig(MetaFileBase):
-    """What a parameter set is: its name and version, the slots it fills, and the
-    uncompressed digest of its layer."""
+    """What a parameter set is: its name and version, the slots it fills with how a
+    change to each takes effect, and the uncompressed digest of its layer."""
 
     class Descriptor(MetaFileDescriptor["ParameterSetConfig"]):
         MediaType = MediaType[PARAMETER_SET_CONFIG_JSON]
@@ -156,7 +124,7 @@ class ParameterSetConfig(MetaFileBase):
     version: str
     description: str | None = None
     created: str | None = None
-    slots: list[ParameterSlotRef] = Field(default_factory=list)
+    slots: list[ParameterSlot] = Field(default_factory=list)
     diff_ids: list[Sha256Digest] = Field(default_factory=list)
     files: list[ParameterSetFileEntry] = Field(default_factory=list)
 
@@ -166,7 +134,7 @@ class ParameterSetConfig(MetaFileBase):
             raise ValueError(f"set name {self.name!r} is not a valid name")
         if not VERSION.fullmatch(self.version):
             raise ValueError(f"set version {self.version!r} is not a valid version")
-        check_slots_disjoint("parameter set", self.slots)
+        check_slots("parameter set", self.slots)
         _layers = 1 if self.slots else 0
         if len(self.diff_ids) != _layers:
             raise ValueError(
@@ -193,7 +161,7 @@ class ParameterSetConfig(MetaFileBase):
         """An empty set fills no slot: applied, every slot holds the base's defaults."""
         return not self.slots
 
-    def slot(self, name: str) -> ParameterSlotRef | None:
+    def slot(self, name: str) -> ParameterSlot | None:
         for _s in self.slots:
             if _s.name == name:
                 return _s
@@ -236,7 +204,6 @@ class ParameterSetManifest(ImageIDMixin, MetaFileBase):
 
     config: ParameterSetConfig.Descriptor
     layers: list[ParameterLayerDescriptor | EmptyDescriptor]
-    subject: SubjectDescriptor
     annotations: Annotations
 
     @computed_field
@@ -276,35 +243,3 @@ class ParameterSetManifest(ImageIDMixin, MetaFileBase):
                 "an empty set carries the empty descriptor and a set that fills a "
                 "slot carries its layer"
             )
-
-
-def check_against_base(
-    manifest: ParameterSetManifest,
-    config: ParameterSetConfig,
-    *,
-    base_manifest_digest: Sha256Digest,
-    base_slots: list[ParameterSlot],
-) -> list[ParameterSlot]:
-    """The base's slots this set fills, once the set is known to be for this base.
-
-    The set's `subject` names the base payload's manifest by digest: a set made for
-    another base is refused, whatever its contents, since it was tested on that one.
-    Each slot the set fills must be one the base declares, at the same path.
-    Raises ValueError.
-    """
-    manifest.check_config(config)
-    if manifest.subject.digest != base_manifest_digest:
-        raise ValueError(
-            f"the set is for base {manifest.subject.digest}, not {base_manifest_digest}"
-        )
-    _filled: list[ParameterSlot] = []
-    for _slot in config.slots:
-        _base = next((_b for _b in base_slots if _b.name == _slot.name), None)
-        if _base is None:
-            raise ValueError(f"the base declares no slot {_slot.name!r}")
-        if _base.path != _slot.path:
-            raise ValueError(
-                f"slot {_slot.name!r} is {_base.path} in the base, not {_slot.path}"
-            )
-        _filled.append(_base)
-    return _filled

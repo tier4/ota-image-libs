@@ -30,6 +30,7 @@ import os
 import posixpath
 import stat
 import tarfile
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -125,7 +126,7 @@ def _tarinfo(name: str, *, type_: bytes, mode: int, size: int = 0) -> tarfile.Ta
 
 
 def write_parameter_layer(
-    root: Path, slots: list[ParameterSlotRef], out: BinaryIO
+    root: Path, slots: Sequence[ParameterSlotRef], out: BinaryIO
 ) -> ParameterLayerInfo:
     """Write the layer of `slots` from the tree at `root` to `out`.
 
@@ -256,7 +257,7 @@ def _member_path(member: tarfile.TarInfo) -> str:
 
 def read_parameter_layer(
     blob: BinaryIO,
-    slots: list[ParameterSlotRef],
+    slots: Sequence[ParameterSlotRef],
     *,
     extract_to: Path | None = None,
     max_size: int | None = None,
