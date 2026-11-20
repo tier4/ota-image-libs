@@ -165,8 +165,9 @@ def _check_not_reserved(
 
 
 def check_slots(what: str, slots: Iterable[ParameterSlot]) -> None:
-    """The slots a set fills: disjoint, and none over what the consumer reads for
-    itself. An `apply` may be inside a slot: the set then carries it."""
+    """The slots a set fills: disjoint, none over what the consumer reads for itself,
+    and no `apply` that is a slot's directory. An `apply` may be inside a slot: the
+    set then carries it."""
     _slots = list(slots)
     check_slots_disjoint(what, _slots)
     _check_not_reserved(what, _slots, RESERVED_PATHS)
@@ -202,6 +203,27 @@ def _check_apply(slot: ParameterSlot, where: str, root: str) -> None:
         )
 
 
+MOUNT_POINT_MODE = 0o755
+"""The mode of a slot directory the consumer makes as a mount point, and of each
+missing parent it makes on the way: root's, readable and searchable by all."""
+
+
+def _existing_ancestor(root: str, path: str) -> str:
+    """The deepest of `path` and its ancestors up to `root` (a directory, real path)
+    that exists; ValueError when one cannot be looked at (other than not being
+    there)."""
+    _at = path
+    while _at != root:
+        try:
+            os.lstat(_at)
+            return _at
+        except (FileNotFoundError, NotADirectoryError):
+            _at = os.path.dirname(_at)
+        except OSError as e:
+            raise ValueError(f"cannot look at {_at}: {e.strerror}") from e
+    return root
+
+
 def check_slots_in_tree(
     root: Path | str,
     slots: Iterable[ParameterSlot],
@@ -226,19 +248,26 @@ def check_slots_in_tree(
         check_absolute_path("reserved path", _path)
     _check_not_reserved("the consumer", _slots, _reserved)
     _root = os.path.realpath(root)
+    if not os.path.isdir(_root):
+        raise ValueError(f"the base {root} is not a directory")
     for _slot in _slots:
         _dir = os.path.join(_root, _slot.relpath)
         # also a link to a missing target: realpath follows it
         if os.path.realpath(_dir) != _dir:
             raise ValueError(
-                f"slot {_slot.name!r}: {_slot.path} is behind a symbolic link"
+                f"slot {_slot.name!r}: {_slot.path} is behind a symbolic link in the "
+                "base"
             )
-        _existing = _dir
-        while not os.path.lexists(_existing):
-            _existing = os.path.dirname(_existing)
+        _existing = _existing_ancestor(_root, _dir)
         if not os.path.isdir(_existing):
-            _what = "is not a directory" if _existing == _dir else "is behind a file"
-            raise ValueError(f"slot {_slot.name!r}: {_slot.path} {_what} in the base")
+            if _existing == _dir:
+                raise ValueError(
+                    f"slot {_slot.name!r}: {_slot.path} is not a directory in the base"
+                )
+            raise ValueError(
+                f"slot {_slot.name!r}: {_slot.path} is behind a file in the base "
+                f"(/{os.path.relpath(_existing, _root)})"
+            )
         if _slot.apply == APPLY_REBOOT or apply_comes_with_set(_slot, _slots):
             continue
         _check_apply(_slot, "the base", _root)
@@ -247,9 +276,26 @@ def check_slots_in_tree(
 def check_applies_in_set(set_root: Path | str, slots: Iterable[ParameterSlot]) -> None:
     """Each `apply` inside one of `slots` is an executable regular file of the set,
     whose files are at `set_root` at their paths relative to `/` (the unpacked layer,
-    or the tree a set is made from). Raises ValueError."""
+    or the tree a set is made from), and others cannot write it: neither the file
+    nor a directory from its slot's directory down to it. The consumer runs it as
+    root. (The group is root's once a consumer lays the set, so its write bit is
+    not looked at.) Raises ValueError."""
     _slots = list(slots)
     _root = os.path.realpath(set_root)
     for _slot in _slots:
-        if apply_comes_with_set(_slot, _slots):
-            _check_apply(_slot, "the set", _root)
+        if not apply_comes_with_set(_slot, _slots):
+            continue
+        _check_apply(_slot, "the set", _root)
+        _in = slot_of(_slot.apply[1:], _slots)
+        assert _in is not None
+        _top = os.path.join(_root, _in.relpath)
+        _at = os.path.join(_root, _slot.apply[1:])
+        while True:
+            if os.lstat(_at).st_mode & stat.S_IWOTH:
+                raise ValueError(
+                    f"slot {_slot.name!r}: others can write apply {_slot.apply} of "
+                    f"the set (/{os.path.relpath(_at, _root)}), which runs as root"
+                )
+            if _at == _top:
+                break
+            _at = os.path.dirname(_at)

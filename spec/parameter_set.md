@@ -91,7 +91,7 @@ A slot is a directory of the base's rootfs that the set replaces as a whole. Wha
 
 Names are unique, and no slot's `path` is inside, or the same as, another's.
 No slot is over what a consumer reads for itself (`/boot`, `/etc/fstab`, `/opt/ota`, `/usr/share/ota`: the same path, inside, or containing it), and no slot's `apply` is a slot's directory.
-An `apply` inside one of the set's slots is one of the set's regular files, executable: when the config lists its `files`, it is among them.
+An `apply` inside one of the set's slots is one of the set's regular files, executable, that others cannot write (neither the file nor a directory from its slot's directory down to it: it runs as root; the group is root's once the set is laid): when the config lists its `files`, it is among them.
 A consumer MAY refuse, the same way, a slot over other paths it reads for itself.
 
 ## Layer
@@ -121,14 +121,17 @@ A consumer:
 
 1. Verifies the parameter image's `index.jwt` and the chain from it to the set's manifest, config and layer, as for any OTA image, and takes the set the index lists for its own ECU.
 2. Refuses, without changing anything, a set the running base has no room for: a slot whose `path` the base has as something other than a directory, or reaches through anything other than directories, or an `apply` of the base (one outside the set's slots) that is not an executable file of the base, either at its real path (no symbolic link on the way).
-   A slot directory the base does not have is room enough: the consumer makes it (an empty directory, owned by root, with its missing parents) as the mount point when it lays the slot, and leaves it when the slot is taken away.
-   An `apply` inside the set's slots is checked against the set instead: refused as above when the config lists the `files` and not it, and, once the layer is unpacked, when it is not an executable regular file there.
+   A slot directory the base does not have is room enough for a consumer that can make it: it makes it as the mount point when it lays the slot (an empty directory, and each missing parent, owned by root with mode `0755`), and leaves it when the slot is taken away. A consumer that cannot write the base refuses such a set here.
+   An `apply` inside the set's slots is checked against the set instead (step 4); a config that lists its `files` and not that `apply` is refused here.
 3. Stores the set where it survives a restart of the consumer and a reboot, and never in the standby slot.
-4. Unpacks the layer into a place of its own and checks it against the config's `diff_ids` (and the layer descriptor's digest), then lays each slot over the base without writing the base's files — a read-only bind mount of the unpacked directory (`nosuid`, `nodev`; execution allowed), or an overlay whose upper directory is opaque.
+4. Unpacks the layer into a place of its own and checks it against the config's `diff_ids` (and the layer descriptor's digest), and each `apply` inside the set's slots against the unpacked files (an executable regular file, at its real path, that others cannot write), refusing the set as in step 2 before the stored set is replaced.
+   It then lays each slot over the base without writing the base's files — a read-only bind mount of the unpacked directory (`nosuid`, `nodev`; execution allowed), or an overlay whose upper directory is opaque — checking again, right before it mounts, that the slot's path is a directory at its real path.
    Its unpacked copy and what mounts it at boot (a managed block of `/etc/fstab`, say) are the consumer's own, and may live in the running slot when that slot is writable; the files under the slots' paths are never written.
    It takes a slot's mount away without waiting for what uses the slot (a lazy unmount): a program that runs from the slot's files keeps them until it exits, and what opens them after sees what is there now.
 5. Runs the `apply` of each slot this set fills whose contents changed (filled by this set only, or by both sets with other files, by path and digest), or reboots for one whose `apply` is `reboot`; a slot whose contents are the same is not applied again, and a slot taken away (filled by the set before only) runs nothing.
    When placing a slot or an `apply` fails, it restores the previous state, runs the `apply` of the slots the restored set fills that changed back, and reports the failure.
+   What reads a slot that nothing runs for (taken away, or restored to the base's after a failed `apply`) goes on as it was (as the failed `apply` left it) until it restarts: from then on it reads the base's.
+   Whenever a slot is taken away (by a set without it, by undoing a failed set, or by dropping a set), what mounts it at boot stops doing so first, before its mount is taken away: a later boot does not lay it again even when the rest fails.
 6. On a later boot, lays the stored set again before what reads the slots starts.
    What the ECU runs changes by an update only: a consumer that finds its stored copy changed (a file edited, added or removed) keeps it in place and records the finding, and the next update of the set replaces the copy and runs the `apply` of every slot it fills, whatever the file lists say.
 
@@ -148,4 +151,6 @@ A set is bound to an ECU by `ecu_id` and `ota_release_key` only, not to a vehicl
 
 A consumer whose ota-image-libs does not know parameter sets refuses a parameter image without changing anything:
 from 0.6.0 on, an index entry with an unknown `artifactType` fails the parse of the whole index; before 0.6.0, the entry is taken for a file-based payload and its manifest, which has no file table, fails to parse.
-A consumer of 0.7.0 takes an `apply` only of the base, outside every slot: a config whose `apply` is inside a slot fails its parse there, so such a consumer refuses that set without changing anything.
+From 0.8.0 on, an `apply` may be inside the set's slots, a slot directory need not be in the base, and nothing runs when a slot is taken away.
+A consumer of 0.7.0 refuses, without changing anything, a set that needs either: a config whose `apply` is inside a slot fails its parse there, and a slot the base has no directory for fails its `check_slots_in_tree`.
+A 0.7.0 consumer runs the `apply` of a slot taken away (the base's, then the only kind) again; one of 0.8.0 runs nothing.

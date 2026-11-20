@@ -36,6 +36,7 @@ from ota_image_libs.v1.parameter_set.schema import (
     ParameterSetManifest,
 )
 from ota_image_libs.v1.parameter_set.slots import (
+    MOUNT_POINT_MODE,
     check_applies_in_set,
     check_slots_in_tree,
 )
@@ -150,25 +151,52 @@ def overlay_parameter_set(
     return _config
 
 
+def _make_missing_dirs(rootfs_dir: Path, relpath: str) -> list[Path]:
+    """Make the directories of `relpath` under `rootfs_dir` that are not there, each
+    MOUNT_POINT_MODE whatever the umask, as a consumer makes a slot's mount point.
+    Returns the ones made, the top first."""
+    _made: list[Path] = []
+    _at = rootfs_dir
+    for _component in relpath.split("/"):
+        _at = _at / _component
+        # checked before: no link on the way, and what is there is a directory
+        if not _at.is_dir():
+            _at.mkdir()
+            os.chmod(_at, MOUNT_POINT_MODE)
+            _made.append(_at)
+    return _made
+
+
 def _replace_slots(
     rootfs_dir: Path, unpacked: Path, config: ParameterSetConfig
 ) -> None:
     # Each slot's new contents are moved next to the slot first, which copies them
     #   when the unpacked tree is on another filesystem, and only then swapped in by
-    #   renames: the tree is not left with a slot gone when a copy fails.
+    #   renames: the tree is not left with a slot gone when a copy fails, nor with
+    #   the directories made for it.
     _staged: list[tuple[Path, Path]] = []
+    _made: list[Path] = []
     try:
         for _slot in config.slots:
-            # checked above: a real directory of the tree, or none yet (made here, as
-            #   the consumer makes its mount point), and not behind a link
             _dst = rootfs_dir / _slot.relpath
-            _dst.mkdir(mode=0o755, parents=True, exist_ok=True)
+            _new = _make_missing_dirs(rootfs_dir, _slot.relpath)
+            _made.extend(_new)
+            if _new:
+                logger.warning(
+                    f"slot {_slot.name!r}: the base has no {_slot.path}, made as the "
+                    "mount point"
+                )
             _stage = Path(tempfile.mkdtemp(prefix=f".{_dst.name}.", dir=_dst.parent))
             _staged.append((_dst, _stage))
             shutil.move(str(unpacked / _slot.relpath), _stage / "new")
     except BaseException:
         for _, _stage in _staged:
             shutil.rmtree(_stage, ignore_errors=True)
+        for _dir in reversed(_made):
+            try:
+                _dir.rmdir()
+            except OSError:
+                pass
         raise
 
     for (_dst, _stage), _slot in zip(_staged, config.slots, strict=True):

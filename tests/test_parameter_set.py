@@ -78,6 +78,7 @@ from ota_image_libs.v1.parameter_set.slots import (
 from ota_image_libs.v1.update_agent_package.schema import EMPTY_JSON
 from ota_image_tools.cmds.list_image import _list_image_from_artifact, _render_output
 from ota_image_tools.cmds.lookup_image import _lookup_image_from_artifact
+from ota_image_tools.libs import deploy_parameter_set as deploy_parameter_set_module
 from ota_image_tools.libs.deploy_parameter_set import (
     ParameterSetInvalid,
     ParameterSetNotApplicable,
@@ -395,6 +396,11 @@ class TestConfig:
         for _held in ([_other_digest], [_other_size], [_listed, _extra], []):
             with pytest.raises(ValueError, match="other files"):
                 _config.check_files(_held)
+
+    def test_an_apply_of_the_set_not_among_its_files_is_refused(self):
+        _slots = [{"name": SLOT.name, "path": SLOT.path, "apply": f"{SLOT_PATH}/a"}]
+        with pytest.raises(ValidationError, match="not among its files"):
+            ParameterSetConfig.parse_metafile(json.dumps(config_dict(slots=_slots)))
 
     def test_an_apply_of_the_set_is_among_its_files_when_they_are_listed(self):
         _apply = f"{SLOT_PATH}/apply.sh"
@@ -954,6 +960,37 @@ class TestInTheTree:
         with pytest.raises(ValueError, match="behind a file"):
             check_slots_in_tree(_root, [_slot])
 
+    def test_a_base_that_is_not_there(self, tmp_path: Path):
+        """Not room enough: a missing root is not an empty base."""
+        _slot = ParameterSlot(name="s", path=SLOT_PATH, apply="reboot")
+        with pytest.raises(ValueError, match="not a directory"):
+            check_slots_in_tree(tmp_path / "missing", [_slot])
+        (tmp_path / "a_file").write_text("x\n")
+        with pytest.raises(ValueError, match="not a directory"):
+            check_slots_in_tree(tmp_path / "a_file", [_slot])
+
+    def test_a_missing_slot_behind_a_link_out_of_the_tree(self, tmp_path: Path):
+        _root = base_tree_at(tmp_path / "rootfs")
+        _outside = tmp_path / "outside"
+        _outside.mkdir()
+        shutil.rmtree(_root / "opt" / "autoware" / "vehicle")
+        (_root / "opt" / "autoware" / "vehicle").symlink_to(_outside)
+        _slot = ParameterSlot(name="s", path=SLOT_PATH, apply="reboot")
+        with pytest.raises(ValueError, match="symbolic link"):
+            check_slots_in_tree(_root, [_slot])
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root looks into any directory")
+    def test_a_way_that_cannot_be_looked_at(self, tmp_path: Path):
+        _root = base_tree_at(tmp_path / "rootfs")
+        _closed = _root / "opt" / "autoware"
+        _closed.chmod(0)
+        _slot = ParameterSlot(name="s", path=f"{SLOT_PATH}/new", apply="reboot")
+        try:
+            with pytest.raises(ValueError, match="cannot look at"):
+                check_slots_in_tree(_root, [_slot])
+        finally:
+            _closed.chmod(0o755)
+
     def test_an_apply_that_comes_with_the_set_is_not_looked_for_in_the_base(
         self, tmp_path: Path
     ):
@@ -1036,6 +1073,21 @@ class TestAppliesInTheSet:
         _root = self._set_at(tmp_path / "set", mode=0o644)
         with pytest.raises(ValueError, match="not an executable file of the set"):
             check_applies_in_set(_root, [self.APPLY_IN_SET])
+
+    def test_an_apply_of_the_set_others_can_write(self, tmp_path: Path):
+        """It runs as root: others must not be able to change it on the way."""
+        _root = self._set_at(tmp_path / "set", mode=0o757)
+        with pytest.raises(ValueError, match="others can write"):
+            check_applies_in_set(_root, [self.APPLY_IN_SET])
+        (_root / self.APPLY_IN_SET.apply[1:]).chmod(0o775)  # the group: root's
+        check_applies_in_set(_root, [self.APPLY_IN_SET])
+        (_root / self.APPLY_IN_SET.relpath).chmod(0o777)
+        with pytest.raises(ValueError, match="others can write"):
+            check_applies_in_set(_root, [self.APPLY_IN_SET])
+        (_root / self.APPLY_IN_SET.relpath).chmod(0o755)
+        # above the slot is the base's, not the set's
+        (_root / "opt").chmod(0o777)
+        check_applies_in_set(_root, [self.APPLY_IN_SET])
 
     def test_an_apply_of_the_set_behind_a_link(self, tmp_path: Path):
         _root = self._set_at(tmp_path / "set")
@@ -1175,23 +1227,92 @@ class TestOverlay:
         assert os.access(base_tree / self.APPLY_IN_SET[1:], os.X_OK)
 
     @pytest.mark.parametrize(
-        "listed", (True, False), ids=("files_listed", "not_listed")
+        "files, mode, match",
+        (
+            ("the layer's", None, "not among its files"),
+            (None, None, "the set has no apply"),
+            ("the layer's", 0o644, "not an executable file of the set"),
+            ("the layer's", 0o757, "others can write"),
+        ),
+        ids=("not_listed", "not_carried", "not_executable", "others_can_write"),
     )
-    def test_an_apply_the_set_does_not_carry_is_refused(
-        self, tmp_path: Path, base_tree: Path, listed: bool
+    def test_an_apply_the_set_does_not_carry_as_it_should_is_refused(
+        self, tmp_path: Path, base_tree: Path, files, mode, match
     ):
         _slots = [
             ParameterSlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_SET)
         ]
+        _tree = make_tree(tmp_path / "set")
+        if mode is not None:
+            (_tree / self.APPLY_IN_SET[1:]).write_text("#!/bin/sh\n")
+            (_tree / self.APPLY_IN_SET[1:]).chmod(mode)
         _update: dict = {"slots": _slots}
-        if not listed:
+        if files is None:
             _update["files"] = None
-        _artifact = build_parameter_image(
-            tmp_path, tree=make_tree(tmp_path / "set"), config_update=_update
-        )
-        with pytest.raises(ParameterSetInvalid, match="apply"):
+        _artifact = build_parameter_image(tmp_path, tree=_tree, config_update=_update)
+        with pytest.raises(ParameterSetInvalid, match=match):
             self.overlay(tmp_path, base_tree, _artifact)
         assert (base_tree / SLOT.relpath / "only_in_the_base").exists(), "unchanged"
+
+    def test_an_overlay_the_base_does_not_have_at_all(
+        self, tmp_path: Path, base_tree: Path
+    ):
+        """What this is for: the base has none of the vehicle overlay, the set fills
+        it and carries its apply. The directories made are 0755 whatever the
+        umask."""
+        shutil.rmtree(base_tree / "opt" / "autoware" / "vehicle")
+        _slots = [
+            ParameterSlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_SET)
+        ]
+        _artifact = build_parameter_image(
+            tmp_path,
+            tree=self._set_with_its_apply(tmp_path / "set"),
+            config_update={"slots": _slots},
+        )
+        _umask = os.umask(0)
+        try:
+            self.overlay(tmp_path, base_tree, _artifact)
+        finally:
+            os.umask(_umask)
+        assert (base_tree / SLOT.relpath / "default" / "vehicle.param.yaml").exists()
+        assert os.access(base_tree / self.APPLY_IN_SET[1:], os.X_OK)
+        for _made in ("opt/autoware/vehicle", "opt/autoware/vehicle/sample_vehicle"):
+            assert stat.S_IMODE((base_tree / _made).stat().st_mode) == 0o755
+
+    def test_a_refused_overlay_makes_no_directory(
+        self, tmp_path: Path, base_tree: Path
+    ):
+        shutil.rmtree(base_tree / "opt" / "autoware" / "vehicle")
+        _slots = [
+            ParameterSlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_SET)
+        ]
+        _artifact = build_parameter_image(
+            tmp_path,
+            tree=make_tree(tmp_path / "set"),
+            config_update={"slots": _slots, "files": None},
+        )
+        with pytest.raises(ParameterSetInvalid, match="the set has no apply"):
+            self.overlay(tmp_path, base_tree, _artifact)
+        assert not (base_tree / "opt" / "autoware" / "vehicle").exists()
+
+    def test_directories_made_go_when_the_slots_cannot_be_put_in_place(
+        self, tmp_path: Path, base_tree: Path, mocker
+    ):
+        shutil.rmtree(base_tree / "opt" / "autoware" / "vehicle")
+        _slots = [
+            ParameterSlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_SET)
+        ]
+        _artifact = build_parameter_image(
+            tmp_path,
+            tree=self._set_with_its_apply(tmp_path / "set"),
+            config_update={"slots": _slots},
+        )
+        mocker.patch.object(
+            deploy_parameter_set_module.shutil, "move", side_effect=OSError("no space")
+        )
+        with pytest.raises(OSError, match="no space"):
+            self.overlay(tmp_path, base_tree, _artifact)
+        assert not (base_tree / "opt" / "autoware" / "vehicle").exists()
 
     def test_the_set_replaces_its_slot_and_leaves_the_others(
         self, tmp_path: Path, base_tree: Path
