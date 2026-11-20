@@ -141,10 +141,22 @@ def check_slots_disjoint(what: str, slots: Iterable[ParameterSlotRef]) -> None:
                 )
 
 
-RESERVED_PATHS = ("/boot", "/etc/fstab", "/opt/ota", "/usr/share/ota")
-"""What every consumer reads for itself, never a slot's: the boot files, the fstab that
-mounts the slots, the consumer's store and trust anchors, and the image's version file.
-A consumer passes what else it reads for itself to `check_slots_in_tree`."""
+RESERVED_PATHS = (
+    "/boot",
+    "/etc/fstab",
+    "/etc/ota",
+    "/opt/ota",
+    "/opt/data/ota",
+    "/usr/lib/ota",
+    "/usr/share/ota",
+)
+"""What every consumer, or the installer it drives, reads for itself, never a slot's
+nor where an `apply` is: the boot files, the fstab, the ECU's identity (`/etc/ota`),
+the consumer's installation, store and trust anchors (`/opt/ota`), the OTA area of the
+writable partition both rootfs slots share (`/opt/data/ota`: the consumer's store, the
+update agent's files), the image's trust anchors (`/usr/lib/ota`) and its version file
+(`/usr/share/ota`). A consumer passes what else it reads for itself to
+`check_slots_in_tree`."""
 
 
 def _overlaps(a: str, b: str) -> bool:
@@ -164,18 +176,45 @@ def _check_not_reserved(
                 )
 
 
+def _check_applies_not_reserved(
+    what: str, slots: Iterable[ParameterSlot], reserved: Iterable[str]
+) -> None:
+    _reserved = list(reserved)
+    for _slot in slots:
+        if _slot.apply == APPLY_REBOOT:
+            continue
+        for _path in _reserved:
+            if is_within(_slot.apply, _path):
+                raise ValueError(
+                    f"{what}: slot {_slot.name!r}'s apply {_slot.apply} is in "
+                    f"{_path}, which a consumer reads for itself"
+                )
+
+
 def check_slots(what: str, slots: Iterable[ParameterSlot]) -> None:
     """The slots a set fills: disjoint, none over what the consumer reads for itself,
-    and no `apply` that is a slot's directory. An `apply` may be inside a slot: the
-    set then carries it."""
+    no `apply` in there either, and no `apply` that is a slot's directory or a
+    directory a slot is in (the consumer runs the file at that path, so a directory
+    there never runs). An `apply` may be inside a slot: the set then carries it."""
     _slots = list(slots)
     check_slots_disjoint(what, _slots)
     _check_not_reserved(what, _slots, RESERVED_PATHS)
+    _check_applies_not_reserved(what, _slots, RESERVED_PATHS)
     for _slot in _slots:
-        if _slot.apply != APPLY_REBOOT and _slot.apply in {_s.path for _s in _slots}:
+        if _slot.apply == APPLY_REBOOT:
+            continue
+        for _other in _slots:
+            if not is_within(_other.path, _slot.apply):
+                continue
+            if _other.path != _slot.apply:
+                _dir = f"a directory slot {_other.name!r} ({_other.path}) is in"
+            elif _other is _slot:
+                _dir = "the slot's own directory"
+            else:
+                _dir = f"slot {_other.name!r}'s directory"
             raise ValueError(
-                f"{what}: slot {_slot.name!r}'s apply {_slot.apply} is a slot's "
-                "directory, not a file"
+                f"{what}: slot {_slot.name!r}'s apply {_slot.apply} is {_dir}, "
+                "not a file"
             )
 
 
@@ -224,6 +263,40 @@ def _existing_ancestor(root: str, path: str) -> str:
     return root
 
 
+MAX_LINKS = 40
+"""As the kernel's limit on the symbolic links followed in one lookup."""
+
+
+def _resolve_in_tree(root: str, path: str) -> str:
+    """Where `path` (absolute, normalized) leads in the tree at `root` (a real path)
+    taken as `/`: each symbolic link on the way followed, an absolute target from
+    `root`, what is missing kept as named. Raises ValueError on too many links."""
+    _todo = [_c for _c in path.split("/") if _c]
+    _done: list[str] = []
+    _links = 0
+    while _todo:
+        _c = _todo.pop(0)
+        if _c == ".":
+            continue
+        if _c == "..":
+            if _done:
+                _done.pop()
+            continue
+        try:
+            _target = os.readlink(os.path.join(root, *_done, _c))
+        except OSError:
+            # not a link, not there, or behind a file: taken as named
+            _done.append(_c)
+            continue
+        _links += 1
+        if _links > MAX_LINKS:
+            raise ValueError(f"{path} is behind too many symbolic links in the base")
+        if _target.startswith("/"):
+            _done = []
+        _todo = [_c for _c in _target.split("/") if _c] + _todo
+    return "/" + "/".join(_done)
+
+
 def check_slots_in_tree(
     root: Path | str,
     slots: Iterable[ParameterSlot],
@@ -239,17 +312,30 @@ def check_slots_in_tree(
     here: `check_applies_in_set` checks it against the set's files. Both are taken at
     their real paths: a symbolic link on the way could lead out of the tree, or put the
     `apply` inside a slot after all. `reserved` names what the consumer reads for
-    itself besides RESERVED_PATHS (absolute paths): a slot over one of them is refused
-    too. Raises ValueError.
+    itself besides RESERVED_PATHS (absolute paths): a slot over one of them, or an
+    `apply` in one, is refused too. A reserved path the base has behind a symbolic
+    link is reserved where the link leads as well (a link into the writable partition,
+    say). Raises ValueError.
     """
     _slots = list(slots)
     _reserved = list(reserved)
     for _path in _reserved:
         check_absolute_path("reserved path", _path)
     _check_not_reserved("the consumer", _slots, _reserved)
+    _check_applies_not_reserved("the consumer", _slots, _reserved)
     _root = os.path.realpath(root)
     if not os.path.isdir(_root):
         raise ValueError(f"the base {root} is not a directory")
+    for _path in (*RESERVED_PATHS, *_reserved):
+        _real = _resolve_in_tree(_root, _path)
+        if _real == _path:
+            continue
+        for _slot in _slots:
+            if _overlaps(_slot.path, _real):
+                raise ValueError(
+                    f"slot {_slot.name!r} ({_slot.path}) overlaps {_real}, where "
+                    f"{_path} leads in the base, which a consumer reads for itself"
+                )
     for _slot in _slots:
         _dir = os.path.join(_root, _slot.relpath)
         # also a link to a missing target: realpath follows it
