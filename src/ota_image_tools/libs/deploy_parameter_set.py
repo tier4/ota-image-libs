@@ -35,7 +35,10 @@ from ota_image_libs.v1.parameter_set.schema import (
     ParameterSetConfig,
     ParameterSetManifest,
 )
-from ota_image_libs.v1.parameter_set.slots import check_slots_in_tree
+from ota_image_libs.v1.parameter_set.slots import (
+    check_applies_in_set,
+    check_slots_in_tree,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +101,9 @@ def overlay_parameter_set(
     """Replace the slots the set of `image_id` in `parameter_image` fills under
     `rootfs_dir`, a tree deployed from a base. Returns the set's config.
 
-    As on a device, the base must have each slot's directory and each `apply`, and the
-    whole layer is checked before the tree is changed.
+    As on a device, the base must have room for each slot (a directory it does not have
+    is made) and each `apply` that is not the set's own, the set must carry the ones
+    inside its slots, and the whole layer is checked before the tree is changed.
     Raises ParameterSetInvalid, ParameterSetNotApplicable, or ParameterLayerInvalid
     for a broken layer.
     """
@@ -135,6 +139,7 @@ def overlay_parameter_set(
             )
         try:
             _config.check_files(_info.files)
+            check_applies_in_set(_unpacked, _config.slots)
         except ValueError as e:
             raise ParameterSetInvalid(str(e)) from e
 
@@ -154,8 +159,10 @@ def _replace_slots(
     _staged: list[tuple[Path, Path]] = []
     try:
         for _slot in config.slots:
-            # checked above: a real directory of the tree, not behind a link
+            # checked above: a real directory of the tree, or none yet (made here, as
+            #   the consumer makes its mount point), and not behind a link
             _dst = rootfs_dir / _slot.relpath
+            _dst.mkdir(mode=0o755, parents=True, exist_ok=True)
             _stage = Path(tempfile.mkdtemp(prefix=f".{_dst.name}.", dir=_dst.parent))
             _staged.append((_dst, _stage))
             shutil.move(str(unpacked / _slot.relpath), _stage / "new")

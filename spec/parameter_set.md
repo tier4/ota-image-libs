@@ -3,8 +3,8 @@
 A parameter set carries **the files of a few directories of an ECU's rootfs** (its *slots*), delivered on their own: a small OTA image (a *parameter image*) whose payload for an ECU replaces those directories in the rootfs that ECU runs.
 The consumer does not write a standby slot and does not reboot: it lays the set over the running base and runs what makes the change take effect.
 
-A set names no base. Which bases a set suits is decided where the release is evaluated, not by the image: a set is applied on whatever base the ECU runs, as long as that base has the set's slots and the commands that apply them.
-A slot may hold any regular file, executables included.
+A set names no base. Which bases a set suits is decided where the release is evaluated, not by the image: a set is applied on whatever base the ECU runs, as long as that base has room for the set's slots and the commands that apply them, other than those the set carries itself.
+A slot may hold any regular file, executables included, and the command that applies it.
 
 Schema as code: [`parameter_set/schema.py`](../src/ota_image_libs/v1/parameter_set/schema.py), [`parameter_set/slots.py`](../src/ota_image_libs/v1/parameter_set/slots.py), the layer in [`parameter_set/layer.py`](../src/ota_image_libs/v1/parameter_set/layer.py).
 
@@ -80,15 +80,18 @@ A consumer MUST refuse a config whose `version` differs from the manifest's, or 
 
 ### Slots
 
-A slot is a directory of the base's rootfs that the set replaces as a whole. The base ships the slot's default contents there, which is what the slot holds when no set fills it; the base declares nothing else.
+A slot is a directory of the base's rootfs that the set replaces as a whole. What the base has there is what the slot holds when no set fills it: its default contents, or nothing when the base does not have the directory; the base declares nothing else.
 
 - **`name`** *string* — REQUIRED. 1 to 64 letters, digits, `_`, `.` or `-`, starting with a letter or digit.
 - **`path`** *string* — REQUIRED. The directory: absolute, normalized, not `/`, and no component of it starts with `.wh.` (which a layer reads as a whiteout).
-- **`apply`** *string* — REQUIRED. How a change to the slot takes effect: the absolute path of an executable of the base that the consumer runs once the slot's new contents are in place, and again once they are taken away; or `reboot`.
+- **`apply`** *string* — REQUIRED. How a change to the slot takes effect: the absolute path of the executable that the consumer runs once the slot's new contents are in place, or `reboot`.
+  What runs is the file at that path then: a file of the set when the path is inside one of the set's slots, the base's otherwise.
   The executable restarts what reads the slot, and fails when that does not come back; it changes no file.
+  Nothing runs when a slot is taken away: that takes effect when what reads the slot restarts.
 
 Names are unique, and no slot's `path` is inside, or the same as, another's.
-No slot is over what a consumer reads for itself (`/boot`, `/etc/fstab`, `/opt/ota`, `/usr/share/ota`: the same path, inside, or containing it), and no slot's `apply` is inside a slot: what the consumer runs is the base's, so that it is there to run again when the set is taken away.
+No slot is over what a consumer reads for itself (`/boot`, `/etc/fstab`, `/opt/ota`, `/usr/share/ota`: the same path, inside, or containing it), and no slot's `apply` is a slot's directory.
+An `apply` inside one of the set's slots is one of the set's regular files, executable: when the config lists its `files`, it is among them.
 A consumer MAY refuse, the same way, a slot over other paths it reads for itself.
 
 ## Layer
@@ -108,7 +111,7 @@ The builder writes members in a fixed order with owner `0:0` and time `0`, so th
 ### Empty Set
 
 An empty set fills no slot: its config has no `slots` and no `diff_ids`, and its manifest's one layer is the OCI empty descriptor.
-Applied, it takes away the set before, if any: every slot goes back to the base's defaults.
+Applied, it takes away the set before, if any: every slot goes back to the base's defaults, and nothing runs.
 
 ## Applying a Set
 
@@ -117,12 +120,15 @@ Applying a set makes the ECU's state **the base plus this one set**: each slot t
 A consumer:
 
 1. Verifies the parameter image's `index.jwt` and the chain from it to the set's manifest, config and layer, as for any OTA image, and takes the set the index lists for its own ECU.
-2. Refuses, without changing anything, a set the running base has no room for: a slot whose `path` is not a directory of the base, or an `apply` that is not an executable file of the base, either at its real path (no symbolic link on the way).
+2. Refuses, without changing anything, a set the running base has no room for: a slot whose `path` the base has as something other than a directory, or reaches through anything other than directories, or an `apply` of the base (one outside the set's slots) that is not an executable file of the base, either at its real path (no symbolic link on the way).
+   A slot directory the base does not have is room enough: the consumer makes it (an empty directory, owned by root, with its missing parents) as the mount point when it lays the slot, and leaves it when the slot is taken away.
+   An `apply` inside the set's slots is checked against the set instead: refused as above when the config lists the `files` and not it, and, once the layer is unpacked, when it is not an executable regular file there.
 3. Stores the set where it survives a restart of the consumer and a reboot, and never in the standby slot.
 4. Unpacks the layer into a place of its own and checks it against the config's `diff_ids` (and the layer descriptor's digest), then lays each slot over the base without writing the base's files — a read-only bind mount of the unpacked directory (`nosuid`, `nodev`; execution allowed), or an overlay whose upper directory is opaque.
    Its unpacked copy and what mounts it at boot (a managed block of `/etc/fstab`, say) are the consumer's own, and may live in the running slot when that slot is writable; the files under the slots' paths are never written.
-5. Runs the `apply` of each slot whose contents changed (filled by one of the two sets and not the other, or by both with other files, by path and digest), or reboots for one whose `apply` is `reboot`; a slot whose contents are the same is not applied again. The `apply` of a slot taken away is the one the set before named.
-   When placing a slot or an `apply` fails, it restores the previous state, runs the `apply` again and reports the failure.
+   It takes a slot's mount away without waiting for what uses the slot (a lazy unmount): a program that runs from the slot's files keeps them until it exits, and what opens them after sees what is there now.
+5. Runs the `apply` of each slot this set fills whose contents changed (filled by this set only, or by both sets with other files, by path and digest), or reboots for one whose `apply` is `reboot`; a slot whose contents are the same is not applied again, and a slot taken away (filled by the set before only) runs nothing.
+   When placing a slot or an `apply` fails, it restores the previous state, runs the `apply` of the slots the restored set fills that changed back, and reports the failure.
 6. On a later boot, lays the stored set again before what reads the slots starts.
    What the ECU runs changes by an update only: a consumer that finds its stored copy changed (a file edited, added or removed) keeps it in place and records the finding, and the next update of the set replaces the copy and runs the `apply` of every slot it fills, whatever the file lists say.
 
@@ -132,7 +138,7 @@ A consumer whose layout cannot take a parameter set refuses the ECU's set, an em
 
 ## Security Considerations
 
-A set decides which directories of the running base it replaces and which executable of the base runs once they are replaced; the base does not limit them beyond the rules above.
+A set decides which directories of the running base it replaces and which executable runs once they are replaced, the base's or one it carries; the base does not limit them beyond the rules above.
 A consumer applies the set as root, lays its files with their execute bits, lays the set again on every boot, and does not go through a standby slot that a failed boot would fall back from.
 The signer of a parameter image is therefore trusted as much as the signer of a base image: a parameter image is signed under the same trust anchors, and with the same controls, as the base images of the ECUs it is for.
 
@@ -142,3 +148,4 @@ A set is bound to an ECU by `ecu_id` and `ota_release_key` only, not to a vehicl
 
 A consumer whose ota-image-libs does not know parameter sets refuses a parameter image without changing anything:
 from 0.6.0 on, an index entry with an unknown `artifactType` fails the parse of the whole index; before 0.6.0, the entry is taken for a file-based payload and its manifest, which has no file table, fails to parse.
+A consumer of 0.7.0 takes an `apply` only of the base, outside every slot: a config whose `apply` is inside a slot fails its parse there, so such a consumer refuses that set without changing anything.

@@ -60,7 +60,13 @@ from ota_image_libs.v1.media_types import (
 )
 from ota_image_libs.v1.update_agent_package.schema import EmptyConfigDescriptor
 
-from .slots import SLOT_NAME, ParameterSlot, check_slots, slot_of
+from .slots import (
+    SLOT_NAME,
+    ParameterSlot,
+    apply_comes_with_set,
+    check_slots,
+    slot_of,
+)
 
 VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}")
 """A set's version: reported as it is, so nothing that would need escaping."""
@@ -140,6 +146,17 @@ class ParameterSetConfig(MetaFileBase):
             if _f.path in _seen:
                 raise ValueError(f"file {_f.path!r} is listed twice")
             _seen.add(_f.path)
+        if self.files is not None:
+            # what the consumer runs is a file of the set: told before the layer is read
+            for _slot in self.slots:
+                if (
+                    apply_comes_with_set(_slot, self.slots)
+                    and _slot.apply[1:] not in _seen
+                ):
+                    raise ValueError(
+                        f"slot {_slot.name!r}'s apply {_slot.apply} is in the set's "
+                        "slots, but not among its files"
+                    )
         return self
 
     @property
