@@ -14,10 +14,11 @@
 """Parameter slots: the directories of the running base a parameter set replaces.
 
 A parameter set names the slots it fills, each with how a change to it takes effect
-(`apply`). The base declares nothing: a slot is a directory the base ships, and its
-contents there are what the slot holds when no set fills it. The checks of the slots,
-on their own and against a tree, are here; the config that carries them is in
-schema.py. Specification: spec/parameter_set.md.
+(`apply`). The base declares nothing: a slot is a directory of the base, whose contents
+there (none, when the base does not have it) are what the slot holds when no set fills
+it. The checks of the slots, on their own, against the base and against the set's own
+files, are here; the config that carries them is in schema.py. Specification:
+spec/parameter_set.md.
 """
 
 from __future__ import annotations
@@ -100,9 +101,11 @@ def slot_of(path: str, slots: Sequence[ParameterSlotRef]) -> ParameterSlotRef | 
 class ParameterSlot(ParameterSlotRef):
     """A slot as a parameter set fills it: also how a change to it takes effect.
 
-    `apply` is an executable of the running base, outside every slot, that the
-    consumer runs once the slot's new contents are in place, and again once they are
-    taken away; or `reboot`. It restarts what reads the slot and changes no file.
+    `apply` is the executable the consumer runs once the slot's new contents are in
+    place: the file at that path then, the set's own when the path is inside a slot
+    the set fills (see `apply_comes_with_set`), the base's otherwise; or `reboot`. It
+    restarts what reads the slot and changes no file. Nothing runs when a slot is
+    taken away: that takes effect when what reads it restarts.
     """
 
     apply: str
@@ -112,6 +115,14 @@ class ParameterSlot(ParameterSlotRef):
         if self.apply != APPLY_REBOOT:
             check_absolute_path(f"slot {self.name!r} apply", self.apply)
         return self
+
+
+def apply_comes_with_set(
+    slot: ParameterSlot, slots: Sequence[ParameterSlotRef]
+) -> bool:
+    """`slot`'s apply is inside one of `slots` (the slots of the set that names it):
+    once the set is in place, what runs is a file of the set, not of the base."""
+    return slot.apply != APPLY_REBOOT and slot_of(slot.apply[1:], slots) is not None
 
 
 def check_slots_disjoint(what: str, slots: Iterable[ParameterSlotRef]) -> None:
@@ -155,18 +166,62 @@ def _check_not_reserved(
 
 def check_slots(what: str, slots: Iterable[ParameterSlot]) -> None:
     """The slots a set fills: disjoint, none over what the consumer reads for itself,
-    and no `apply` inside a slot, where a set would replace it: what runs as the
-    consumer is the base's, and it is there to run again when the set is gone."""
+    and no `apply` that is a slot's directory. An `apply` may be inside a slot: the
+    set then carries it."""
     _slots = list(slots)
     check_slots_disjoint(what, _slots)
     _check_not_reserved(what, _slots, RESERVED_PATHS)
     for _slot in _slots:
-        for _other in _slots:
-            if _slot.apply != APPLY_REBOOT and _overlaps(_slot.apply, _other.path):
-                raise ValueError(
-                    f"{what}: slot {_slot.name!r}'s apply {_slot.apply} is in slot "
-                    f"{_other.name!r} ({_other.path}), which a set replaces"
-                )
+        if _slot.apply != APPLY_REBOOT and _slot.apply in {_s.path for _s in _slots}:
+            raise ValueError(
+                f"{what}: slot {_slot.name!r}'s apply {_slot.apply} is a slot's "
+                "directory, not a file"
+            )
+
+
+def _check_apply(slot: ParameterSlot, where: str, root: str) -> None:
+    """`slot`'s apply is an executable regular file of `where` (the base, or the set),
+    whose tree is at `root` (a real path), at its real path: a symbolic link on the
+    way could lead out of the tree, or into a slot."""
+    _file = os.path.join(root, slot.apply[1:])
+    if os.path.realpath(_file) != _file:
+        raise ValueError(
+            f"slot {slot.name!r}: apply {slot.apply} is behind a symbolic link in "
+            f"{where}"
+        )
+    try:
+        _st = os.stat(_file)
+    except OSError as e:
+        # also a component of the way that is a file (ENOTDIR)
+        raise ValueError(
+            f"slot {slot.name!r}: {where} has no apply {slot.apply}: {e.strerror}"
+        ) from e
+    if not stat.S_ISREG(_st.st_mode) or not _st.st_mode & 0o111:
+        raise ValueError(
+            f"slot {slot.name!r}: apply {slot.apply} is not an executable file of "
+            f"{where}"
+        )
+
+
+MOUNT_POINT_MODE = 0o755
+"""The mode of a slot directory the consumer makes as a mount point, and of each
+missing parent it makes on the way: root's, readable and searchable by all."""
+
+
+def _existing_ancestor(root: str, path: str) -> str:
+    """The deepest of `path` and its ancestors up to `root` (a directory, real path)
+    that exists; ValueError when one cannot be looked at (other than not being
+    there)."""
+    _at = path
+    while _at != root:
+        try:
+            os.lstat(_at)
+            return _at
+        except (FileNotFoundError, NotADirectoryError):
+            _at = os.path.dirname(_at)
+        except OSError as e:
+            raise ValueError(f"cannot look at {_at}: {e.strerror}") from e
+    return root
 
 
 def check_slots_in_tree(
@@ -175,13 +230,17 @@ def check_slots_in_tree(
     *,
     reserved: Iterable[str] = (),
 ) -> None:
-    """The base at `root` (a deployed tree, or `/` on the device) has what the slots
-    need: each slot's directory, and each `apply` as an executable regular file.
+    """The base at `root` (a deployed tree, or `/` on the device) has room for the
+    slots, and each `apply` that is the base's is there as an executable regular file.
 
-    Both are taken at their real paths: a symbolic link on the way could lead out of
-    the tree, or put the `apply` inside a slot after all. `reserved` names what the
-    consumer reads for itself besides RESERVED_PATHS (absolute paths): a slot over one
-    of them is refused too. Raises ValueError.
+    A slot's directory the base does not have is fine (the consumer makes it as the
+    mount point); one it has is a directory, and the way to it is through directories
+    only. An `apply` inside one of `slots` comes with the set and is not looked for
+    here: `check_applies_in_set` checks it against the set's files. Both are taken at
+    their real paths: a symbolic link on the way could lead out of the tree, or put the
+    `apply` inside a slot after all. `reserved` names what the consumer reads for
+    itself besides RESERVED_PATHS (absolute paths): a slot over one of them is refused
+    too. Raises ValueError.
     """
     _slots = list(slots)
     _reserved = list(reserved)
@@ -189,32 +248,54 @@ def check_slots_in_tree(
         check_absolute_path("reserved path", _path)
     _check_not_reserved("the consumer", _slots, _reserved)
     _root = os.path.realpath(root)
+    if not os.path.isdir(_root):
+        raise ValueError(f"the base {root} is not a directory")
     for _slot in _slots:
         _dir = os.path.join(_root, _slot.relpath)
+        # also a link to a missing target: realpath follows it
         if os.path.realpath(_dir) != _dir:
             raise ValueError(
-                f"slot {_slot.name!r}: {_slot.path} is behind a symbolic link"
+                f"slot {_slot.name!r}: {_slot.path} is behind a symbolic link in the "
+                "base"
             )
-        if not os.path.isdir(_dir):
+        _existing = _existing_ancestor(_root, _dir)
+        if not os.path.isdir(_existing):
+            if _existing == _dir:
+                raise ValueError(
+                    f"slot {_slot.name!r}: {_slot.path} is not a directory in the base"
+                )
             raise ValueError(
-                f"slot {_slot.name!r}: the base has no directory {_slot.path}"
+                f"slot {_slot.name!r}: {_slot.path} is behind a file in the base "
+                f"(/{os.path.relpath(_existing, _root)})"
             )
-        if _slot.apply == APPLY_REBOOT:
+        if _slot.apply == APPLY_REBOOT or apply_comes_with_set(_slot, _slots):
             continue
-        _apply = os.path.join(_root, _slot.apply[1:])
-        if os.path.realpath(_apply) != _apply:
-            raise ValueError(
-                f"slot {_slot.name!r}: apply {_slot.apply} is behind a symbolic link"
-            )
-        try:
-            _st = os.stat(_apply)
-        except OSError as e:
-            # also a component of the way that is a file (ENOTDIR)
-            raise ValueError(
-                f"slot {_slot.name!r}: the base has no apply {_slot.apply}: "
-                f"{e.strerror}"
-            ) from e
-        if not stat.S_ISREG(_st.st_mode) or not _st.st_mode & 0o111:
-            raise ValueError(
-                f"slot {_slot.name!r}: apply {_slot.apply} is not an executable file"
-            )
+        _check_apply(_slot, "the base", _root)
+
+
+def check_applies_in_set(set_root: Path | str, slots: Iterable[ParameterSlot]) -> None:
+    """Each `apply` inside one of `slots` is an executable regular file of the set,
+    whose files are at `set_root` at their paths relative to `/` (the unpacked layer,
+    or the tree a set is made from), and others cannot write it: neither the file
+    nor a directory from its slot's directory down to it. The consumer runs it as
+    root. (The group is root's once a consumer lays the set, so its write bit is
+    not looked at.) Raises ValueError."""
+    _slots = list(slots)
+    _root = os.path.realpath(set_root)
+    for _slot in _slots:
+        if not apply_comes_with_set(_slot, _slots):
+            continue
+        _check_apply(_slot, "the set", _root)
+        _in = slot_of(_slot.apply[1:], _slots)
+        assert _in is not None
+        _top = os.path.join(_root, _in.relpath)
+        _at = os.path.join(_root, _slot.apply[1:])
+        while True:
+            if os.lstat(_at).st_mode & stat.S_IWOTH:
+                raise ValueError(
+                    f"slot {_slot.name!r}: others can write apply {_slot.apply} of "
+                    f"the set (/{os.path.relpath(_at, _root)}), which runs as root"
+                )
+            if _at == _top:
+                break
+            _at = os.path.dirname(_at)
