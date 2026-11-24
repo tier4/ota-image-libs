@@ -219,6 +219,14 @@ class TestSlots:
         (
             "/opt/ota",
             "/opt/ota/client",
+            # the OTA area of the partition both rootfs slots share
+            "/opt/data/ota",
+            "/opt/data/ota/parameter-set",
+            "/opt/data/ota/download",
+            "/opt/data",
+            # the ECU's identity and the image's trust anchors the installer reads
+            "/etc/ota",
+            "/usr/lib/ota",
             "/boot/grub",
             "/usr/share",
             "/usr/share/ota",
@@ -230,7 +238,15 @@ class TestSlots:
             check_slots("t", [ParameterSlot(name="s", path=path, apply="reboot")])
 
     @pytest.mark.parametrize(
-        "path", ("/opt/otaclient", "/bootstrap", "/usr/share/otafoo", "/etc/fstab.d")
+        "path",
+        (
+            "/opt/otaclient",
+            "/bootstrap",
+            "/usr/share/otafoo",
+            "/etc/fstab.d",
+            "/opt/data/autoware/params",
+            "/opt/data/otafoo",
+        ),
     )
     def test_a_slot_next_to_what_the_consumer_reads(self, path):
         check_slots("t", [ParameterSlot(name="s", path=path, apply="reboot")])
@@ -247,9 +263,69 @@ class TestSlots:
         assert not apply_comes_with_set(SLOT, [SLOT])
         assert not apply_comes_with_set(OTHER_SLOT, [OTHER_SLOT])
 
-    def test_a_slots_apply_is_not_a_slots_directory(self):
-        with pytest.raises(ValueError, match="not a file"):
-            check_slots("t", [ParameterSlot(name="s", path=SLOT_PATH, apply=SLOT_PATH)])
+    @pytest.mark.parametrize(
+        "apply, match",
+        (
+            (SLOT_PATH, r"is the slot's own directory, not a file"),
+            # a directory above the slot: what runs is the file at that path
+            (
+                "/opt/autoware/vehicle/sample_vehicle",
+                r"is a directory slot 's' \(.*\) is in, not a file",
+            ),
+            ("/opt/autoware", r"is a directory slot 's' \(.*\) is in, not a file"),
+        ),
+    )
+    def test_a_slots_apply_is_not_a_directory_of_its_slot(self, apply, match):
+        with pytest.raises(ValueError, match=match):
+            check_slots("t", [ParameterSlot(name="s", path=SLOT_PATH, apply=apply)])
+
+    @pytest.mark.parametrize(
+        "slot, match",
+        (
+            (
+                ParameterSlot(name="s", path=SLOT_PATH, apply=OTHER_SLOT_PATH),
+                r"is slot 'launch''s directory, not a file",
+            ),
+            # above another slot only, not its own
+            (
+                ParameterSlot(
+                    name="s",
+                    path="/opt/params",
+                    apply="/opt/autoware/vehicle/sample_vehicle",
+                ),
+                r"is a directory slot 'launch' \(.*\) is in, not a file",
+            ),
+        ),
+    )
+    def test_an_apply_that_is_a_directory_of_another_slot_is_refused(self, slot, match):
+        with pytest.raises(ValueError, match=match):
+            check_slots("t", [slot, OTHER_SLOT])
+
+    @pytest.mark.parametrize(
+        "apply",
+        (
+            "/opt/ota/client/run.sh",
+            "/opt/data/ota/parameter-set/applied/tree/x.sh",
+            "/usr/share/ota/apply.sh",
+        ),
+    )
+    def test_an_apply_in_what_the_consumer_reads_is_refused(self, apply):
+        with pytest.raises(ValueError, match="which a consumer reads for itself"):
+            check_slots("t", [ParameterSlot(name="s", path=SLOT_PATH, apply=apply)])
+
+    @pytest.mark.parametrize(
+        "apply",
+        (
+            # a file whose name only starts with the slot's
+            f"{SLOT_PATH}.sh",
+            # a file whose name is only the start of the slot's, or of a directory
+            # above it: the boundary is a whole path component
+            "/opt/autoware/vehicle/sample_vehicle/individual",
+            "/opt/autoware/vehicle/sample_veh",
+        ),
+    )
+    def test_an_apply_next_to_a_slot_is_taken(self, apply):
+        check_slots("t", [ParameterSlot(name="s", path=SLOT_PATH, apply=apply)])
 
 
 #
@@ -1029,6 +1105,48 @@ class TestInTheTree:
             check_slots_in_tree(
                 _root, [SLOT], reserved=["/etc/ota", "/opt/autoware/vehicle"]
             )
+
+    def test_an_apply_in_what_this_consumer_reads_too(self, tmp_path: Path):
+        _root = base_tree_at(tmp_path / "rootfs")
+        with pytest.raises(ValueError, match="which a consumer reads for itself"):
+            check_slots_in_tree(_root, [SLOT], reserved=[os.path.dirname(APPLY)])
+
+    @pytest.mark.parametrize("absolute", (True, False))
+    def test_a_reserved_path_behind_a_link_is_reserved_where_it_leads(
+        self, tmp_path: Path, absolute: bool
+    ):
+        """On the partition layouts, /ota-cache and the client's squashfs are links
+        into the writable partition: a slot there hides them all the same."""
+        _root = base_tree_at(tmp_path / "rootfs")
+        (_root / "opt/data/ota-cache").mkdir(parents=True)
+        (_root / "ota-cache").symlink_to(
+            "/opt/data/ota-cache" if absolute else "opt/data/./ota-cache"
+        )
+        _cache = ParameterSlot(name="c", path="/opt/data/ota-cache", apply="reboot")
+        with pytest.raises(ValueError, match="where /ota-cache leads in the base"):
+            check_slots_in_tree(_root, [_cache], reserved=["/ota-cache"])
+        _above = ParameterSlot(name="c", path="/opt/data", apply="reboot")
+        with pytest.raises(ValueError, match="where /ota-cache leads in the base"):
+            check_slots_in_tree(_root, [_above], reserved=["/ota-cache"])
+        # the link's own name is all that is reserved without it
+        check_slots_in_tree(_root, [_cache])
+        # a slot next to where it leads
+        _next = ParameterSlot(name="c", path="/opt/data/ota-cachex", apply="reboot")
+        check_slots_in_tree(_root, [_next], reserved=["/ota-cache"])
+
+    def test_a_link_in_a_reserved_path_of_the_library(self, tmp_path: Path):
+        _root = base_tree_at(tmp_path / "rootfs")
+        (_root / "opt/data/ota-client").mkdir(parents=True)
+        (_root / "opt/ota").symlink_to("/opt/data/ota-client")
+        _slot = ParameterSlot(name="c", path="/opt/data/ota-client", apply="reboot")
+        with pytest.raises(ValueError, match="where /opt/ota leads in the base"):
+            check_slots_in_tree(_root, [_slot])
+
+    def test_a_reserved_path_behind_a_link_loop(self, tmp_path: Path):
+        _root = base_tree_at(tmp_path / "rootfs")
+        (_root / "loop").symlink_to("/loop")
+        with pytest.raises(ValueError, match="too many symbolic links"):
+            check_slots_in_tree(_root, [SLOT], reserved=["/loop/x"])
 
     def test_links_on_the_way_are_refused(self, tmp_path: Path):
         """A link could lead out of the tree, or into a slot."""
