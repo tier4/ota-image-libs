@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 _NO_FILE_TABLE_MSG = (
     "image payload {image_id} is not a file-based payload: a partition-based OTA "
-    "image or a parameter set carries no file_table."
+    "image or an overlay carries no file_table."
 )
 
 

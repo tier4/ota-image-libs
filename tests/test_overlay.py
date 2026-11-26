@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for the parameter set: schemas, the layer, and laying it over a base tree."""
+"""Tests for the overlay: schemas, the layer, and laying it over a base tree."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from ota_image_libs.common.oci_spec import Sha256Digest
 from ota_image_libs.v1.annotation_keys import (
     BUILD_TOOL_VERSION,
     OTA_RELEASE_KEY,
-    PARAMETER_SET_VERSION,
+    OVERLAY_VERSION,
     PLATFORM_ECU,
 )
 from ota_image_libs.v1.consts import IMAGE_INDEX_FNAME, RESOURCE_DIR
@@ -47,30 +47,30 @@ from ota_image_libs.v1.media_types import (
     IMAGE_MANIFEST,
     OCI_EMPTY_JSON,
     OCI_LAYER_TAR_ZSTD,
-    PARAMETER_SET_ARTIFACT,
-    PARAMETER_SET_CONFIG_JSON,
+    OVERLAY_ARTIFACT,
+    OVERLAY_CONFIG_JSON,
 )
-from ota_image_libs.v1.parameter_set import layer as layer_module
-from ota_image_libs.v1.parameter_set.layer import (
+from ota_image_libs.v1.overlay import layer as layer_module
+from ota_image_libs.v1.overlay.layer import (
     MAX_TAR_TRAILER,
     OPAQUE_WHITEOUT,
     READ_SIZE,
-    ParameterLayerInvalid,
-    read_parameter_layer,
-    write_parameter_layer,
+    OverlayLayerInvalid,
+    read_overlay_layer,
+    write_overlay_layer,
 )
-from ota_image_libs.v1.parameter_set.schema import (
+from ota_image_libs.v1.overlay.schema import (
     EmptyDescriptor,
-    ParameterLayerDescriptor,
-    ParameterSetConfig,
-    ParameterSetFileEntry,
-    ParameterSetManifest,
+    OverlayConfig,
+    OverlayFileEntry,
+    OverlayLayerDescriptor,
+    OverlayManifest,
 )
-from ota_image_libs.v1.parameter_set.slots import (
-    ParameterSlot,
-    ParameterSlotRef,
-    apply_comes_with_set,
-    check_applies_in_set,
+from ota_image_libs.v1.overlay.slots import (
+    OverlaySlot,
+    OverlaySlotRef,
+    apply_comes_with_overlay,
+    check_applies_in_overlay,
     check_slots,
     check_slots_disjoint,
     check_slots_in_tree,
@@ -78,30 +78,30 @@ from ota_image_libs.v1.parameter_set.slots import (
 from ota_image_libs.v1.update_agent_package.schema import EMPTY_JSON
 from ota_image_tools.cmds.list_image import _list_image_from_artifact, _render_output
 from ota_image_tools.cmds.lookup_image import _lookup_image_from_artifact
-from ota_image_tools.libs import deploy_parameter_set as deploy_parameter_set_module
-from ota_image_tools.libs.deploy_parameter_set import (
-    ParameterSetInvalid,
-    ParameterSetNotApplicable,
-    open_parameter_set,
-    overlay_parameter_set,
+from ota_image_tools.libs import deploy_overlay as deploy_overlay_module
+from ota_image_tools.libs.deploy_overlay import (
+    OverlayInvalid,
+    OverlayNotApplicable,
+    lay_overlay,
+    open_overlay,
 )
 
 SLOT_PATH = "/opt/autoware/vehicle/sample_vehicle/individual_params"
 OTHER_SLOT_PATH = "/opt/autoware/vehicle/sample_vehicle/launch"
 APPLY = "/opt/autoware/vehicle/sample_vehicle/apply.sh"
-SLOT = ParameterSlot(name="individual_params", path=SLOT_PATH, apply=APPLY)
-OTHER_SLOT = ParameterSlot(name="launch", path=OTHER_SLOT_PATH, apply="reboot")
+SLOT = OverlaySlot(name="individual_params", path=SLOT_PATH, apply=APPLY)
+OTHER_SLOT = OverlaySlot(name="launch", path=OTHER_SLOT_PATH, apply="reboot")
 ECU = "autoware"
 IMAGE_ID = ImageIdentifier(ECU, OTAReleaseKey.dev)
 MANIFEST_ANNOTATIONS = {
     PLATFORM_ECU: ECU,
     OTA_RELEASE_KEY: "dev",
-    PARAMETER_SET_VERSION: "2026.10.29-1",
+    OVERLAY_VERSION: "2026.10.29-1",
 }
 
 
-def make_tree(root: Path, slot: ParameterSlotRef = SLOT) -> Path:
-    """A slot's directory as a set carries it: files at two levels."""
+def make_tree(root: Path, slot: OverlaySlotRef = SLOT) -> Path:
+    """A slot's directory as an overlay carries it: files at two levels."""
     _slot_dir = root / slot.relpath
     (_slot_dir / "default").mkdir(parents=True)
     (_slot_dir / "default" / "vehicle.param.yaml").write_text("max_speed: 10\n")
@@ -113,7 +113,7 @@ def make_tree(root: Path, slot: ParameterSlotRef = SLOT) -> Path:
 
 def layer_bytes(root: Path, slots=(SLOT,)) -> tuple[bytes, object]:
     _out = io.BytesIO()
-    _info = write_parameter_layer(root, list(slots), _out)
+    _info = write_overlay_layer(root, list(slots), _out)
     return _out.getvalue(), _info
 
 
@@ -150,7 +150,7 @@ def member(
     return (_ti, data if type_ == tarfile.REGTYPE else None)
 
 
-def slot_members(slot: ParameterSlotRef = SLOT):
+def slot_members(slot: OverlaySlotRef = SLOT):
     return [
         member(slot.relpath, tarfile.DIRTYPE, mode=0o755),
         member(f"{slot.relpath}/{OPAQUE_WHITEOUT}"),
@@ -164,12 +164,12 @@ def slot_members(slot: ParameterSlotRef = SLOT):
 
 class TestSlots:
     def test_a_slot_says_how_a_change_to_it_takes_effect(self):
-        _slot = ParameterSlot.model_validate(
+        _slot = OverlaySlot.model_validate(
             {"name": "individual_params", "path": SLOT_PATH, "apply": "reboot"}
         )
         assert _slot.relpath == SLOT_PATH[1:]
         with pytest.raises(ValidationError):
-            ParameterSlot.model_validate({"name": "s", "path": SLOT_PATH})
+            OverlaySlot.model_validate({"name": "s", "path": SLOT_PATH})
 
     @pytest.mark.parametrize(
         "path",
@@ -177,41 +177,39 @@ class TestSlots:
     )
     def test_a_slot_path_is_absolute_and_normalized(self, path):
         with pytest.raises(ValidationError):
-            ParameterSlotRef(name="s", path=path)
+            OverlaySlotRef(name="s", path=path)
 
     @pytest.mark.parametrize("apply", ("restart.sh", "/opt/../bin/x", ""))
     def test_apply_is_an_absolute_path_or_reboot(self, apply):
         with pytest.raises(ValidationError):
-            ParameterSlot(name="s", path=SLOT_PATH, apply=apply)
+            OverlaySlot(name="s", path=SLOT_PATH, apply=apply)
 
     @pytest.mark.parametrize("path", ("/opt/.wh.params", "/opt/.wh..wh..opq/x"))
     def test_a_slot_path_has_no_whiteout_name(self, path):
         """The reader would take the slot's directory for a whiteout."""
         with pytest.raises(ValidationError, match="whiteout"):
-            ParameterSlotRef(name="s", path=path)
+            OverlaySlotRef(name="s", path=path)
 
     @pytest.mark.parametrize("name", ("", "-x", "a b", "x" * 65))
     def test_a_slot_name_is_a_plain_name(self, name):
         with pytest.raises(ValidationError):
-            ParameterSlotRef(name=name, path=SLOT_PATH)
+            OverlaySlotRef(name=name, path=SLOT_PATH)
 
     def test_slots_are_disjoint(self):
         check_slots_disjoint("t", [SLOT, OTHER_SLOT])
         with pytest.raises(ValueError, match="unique"):
+            check_slots_disjoint("t", [SLOT, OverlaySlotRef(name=SLOT.name, path="/x")])
+        with pytest.raises(ValueError, match="inside"):
             check_slots_disjoint(
-                "t", [SLOT, ParameterSlotRef(name=SLOT.name, path="/x")]
+                "t", [SLOT, OverlaySlotRef(name="inner", path=f"{SLOT_PATH}/default")]
             )
         with pytest.raises(ValueError, match="inside"):
             check_slots_disjoint(
-                "t", [SLOT, ParameterSlotRef(name="inner", path=f"{SLOT_PATH}/default")]
-            )
-        with pytest.raises(ValueError, match="inside"):
-            check_slots_disjoint(
-                "t", [SLOT, ParameterSlotRef(name="same", path=SLOT_PATH)]
+                "t", [SLOT, OverlaySlotRef(name="same", path=SLOT_PATH)]
             )
         # a path that only starts with the same letters is another directory
         check_slots_disjoint(
-            "t", [SLOT, ParameterSlotRef(name="sibling", path=f"{SLOT_PATH}2")]
+            "t", [SLOT, OverlaySlotRef(name="sibling", path=f"{SLOT_PATH}2")]
         )
 
     @pytest.mark.parametrize(
@@ -221,7 +219,7 @@ class TestSlots:
             "/opt/ota/client",
             # the OTA area of the partition both rootfs slots share
             "/opt/data/ota",
-            "/opt/data/ota/parameter-set",
+            "/opt/data/ota/overlay",
             "/opt/data/ota/download",
             "/opt/data",
             # the ECU's identity and the image's trust anchors the installer reads
@@ -235,7 +233,7 @@ class TestSlots:
     )
     def test_a_slot_is_not_over_what_the_consumer_reads(self, path):
         with pytest.raises(ValueError, match="reads for itself"):
-            check_slots("t", [ParameterSlot(name="s", path=path, apply="reboot")])
+            check_slots("t", [OverlaySlot(name="s", path=path, apply="reboot")])
 
     @pytest.mark.parametrize(
         "path",
@@ -249,19 +247,19 @@ class TestSlots:
         ),
     )
     def test_a_slot_next_to_what_the_consumer_reads(self, path):
-        check_slots("t", [ParameterSlot(name="s", path=path, apply="reboot")])
+        check_slots("t", [OverlaySlot(name="s", path=path, apply="reboot")])
 
-    def test_a_slots_apply_may_come_with_the_set(self):
-        """Inside a slot (its own or another's), the apply is a file of the set."""
-        _own = ParameterSlot(name="s", path=SLOT_PATH, apply=f"{SLOT_PATH}/apply.sh")
+    def test_a_slots_apply_may_come_with_the_overlay(self):
+        """Inside a slot (its own or another's), the apply is a file of the overlay."""
+        _own = OverlaySlot(name="s", path=SLOT_PATH, apply=f"{SLOT_PATH}/apply.sh")
         check_slots("t", [_own])
-        assert apply_comes_with_set(_own, [_own])
-        _other = ParameterSlot(name="a", path=SLOT_PATH, apply=f"{OTHER_SLOT_PATH}/x")
+        assert apply_comes_with_overlay(_own, [_own])
+        _other = OverlaySlot(name="a", path=SLOT_PATH, apply=f"{OTHER_SLOT_PATH}/x")
         check_slots("t", [_other, OTHER_SLOT])
-        assert apply_comes_with_set(_other, [_other, OTHER_SLOT])
-        assert not apply_comes_with_set(_other, [_other])
-        assert not apply_comes_with_set(SLOT, [SLOT])
-        assert not apply_comes_with_set(OTHER_SLOT, [OTHER_SLOT])
+        assert apply_comes_with_overlay(_other, [_other, OTHER_SLOT])
+        assert not apply_comes_with_overlay(_other, [_other])
+        assert not apply_comes_with_overlay(SLOT, [SLOT])
+        assert not apply_comes_with_overlay(OTHER_SLOT, [OTHER_SLOT])
 
     @pytest.mark.parametrize(
         "apply, match",
@@ -277,18 +275,18 @@ class TestSlots:
     )
     def test_a_slots_apply_is_not_a_directory_of_its_slot(self, apply, match):
         with pytest.raises(ValueError, match=match):
-            check_slots("t", [ParameterSlot(name="s", path=SLOT_PATH, apply=apply)])
+            check_slots("t", [OverlaySlot(name="s", path=SLOT_PATH, apply=apply)])
 
     @pytest.mark.parametrize(
         "slot, match",
         (
             (
-                ParameterSlot(name="s", path=SLOT_PATH, apply=OTHER_SLOT_PATH),
+                OverlaySlot(name="s", path=SLOT_PATH, apply=OTHER_SLOT_PATH),
                 r"is slot 'launch''s directory, not a file",
             ),
             # above another slot only, not its own
             (
-                ParameterSlot(
+                OverlaySlot(
                     name="s",
                     path="/opt/params",
                     apply="/opt/autoware/vehicle/sample_vehicle",
@@ -305,13 +303,13 @@ class TestSlots:
         "apply",
         (
             "/opt/ota/client/run.sh",
-            "/opt/data/ota/parameter-set/applied/tree/x.sh",
+            "/opt/data/ota/overlay/applied/tree/x.sh",
             "/usr/share/ota/apply.sh",
         ),
     )
     def test_an_apply_in_what_the_consumer_reads_is_refused(self, apply):
         with pytest.raises(ValueError, match="which a consumer reads for itself"):
-            check_slots("t", [ParameterSlot(name="s", path=SLOT_PATH, apply=apply)])
+            check_slots("t", [OverlaySlot(name="s", path=SLOT_PATH, apply=apply)])
 
     @pytest.mark.parametrize(
         "apply",
@@ -325,7 +323,7 @@ class TestSlots:
         ),
     )
     def test_an_apply_next_to_a_slot_is_taken(self, apply):
-        check_slots("t", [ParameterSlot(name="s", path=SLOT_PATH, apply=apply)])
+        check_slots("t", [OverlaySlot(name="s", path=SLOT_PATH, apply=apply)])
 
 
 #
@@ -338,7 +336,7 @@ DIFF_ID = "sha256:" + "1" * 64
 def config_dict(**kw) -> dict:
     _d = {
         "schemaVersion": 1,
-        "mediaType": PARAMETER_SET_CONFIG_JSON,
+        "mediaType": OVERLAY_CONFIG_JSON,
         "name": "sample_vehicle_params",
         "version": "2026.10.29-1",
         "slots": [{"name": SLOT.name, "path": SLOT.path, "apply": APPLY}],
@@ -372,9 +370,9 @@ def manifest_dict(*, empty: bool = False) -> dict:
     return {
         "schemaVersion": 2,
         "mediaType": IMAGE_MANIFEST,
-        "artifactType": PARAMETER_SET_ARTIFACT,
+        "artifactType": OVERLAY_ARTIFACT,
         "config": {
-            "mediaType": PARAMETER_SET_CONFIG_JSON,
+            "mediaType": OVERLAY_CONFIG_JSON,
             "digest": "sha256:" + "4" * 64,
             "size": 640,
         },
@@ -385,17 +383,14 @@ def manifest_dict(*, empty: bool = False) -> dict:
 
 class TestConfig:
     def test_a_config_names_its_slots_and_their_diff_id(self):
-        _config = ParameterSetConfig.parse_metafile(json.dumps(config_dict()))
+        _config = OverlayConfig.parse_metafile(json.dumps(config_dict()))
         assert _config.slot(SLOT.name) == SLOT
         assert not _config.is_empty
         assert str(_config.diff_ids[0]) == DIFF_ID
-        assert (
-            json.loads(_config.export_metafile())["mediaType"]
-            == PARAMETER_SET_CONFIG_JSON
-        )
+        assert json.loads(_config.export_metafile())["mediaType"] == OVERLAY_CONFIG_JSON
 
-    def test_an_empty_set_fills_no_slot_and_has_no_diff_id(self):
-        _config = ParameterSetConfig.parse_metafile(
+    def test_an_empty_overlay_fills_no_slot_and_has_no_diff_id(self):
+        _config = OverlayConfig.parse_metafile(
             json.dumps(config_dict(slots=[], diff_ids=[], files=[]))
         )
         assert _config.is_empty
@@ -446,7 +441,7 @@ class TestConfig:
                         }
                     ]
                 },
-                id="apply_of_the_set_not_among_its_files",
+                id="apply_of_the_overlay_not_among_its_files",
             ),
             pytest.param(
                 {"slots": [{"name": "s", "path": "/opt/ota/x", "apply": "reboot"}]},
@@ -456,51 +451,51 @@ class TestConfig:
     )
     def test_a_config_that_does_not_add_up_is_refused(self, change):
         with pytest.raises(ValidationError):
-            ParameterSetConfig.parse_metafile(json.dumps(config_dict(**change)))
+            OverlayConfig.parse_metafile(json.dumps(config_dict(**change)))
 
     def test_the_files_listed_are_the_layers(self):
-        _config = ParameterSetConfig.parse_metafile(json.dumps(config_dict()))
+        _config = OverlayConfig.parse_metafile(json.dumps(config_dict()))
         assert _config.files is not None
         _listed = _config.files[0]
         _config.check_files([_listed])
 
         _other_digest = _listed.model_copy(update={"digest": Sha256Digest("9" * 64)})
         _other_size = _listed.model_copy(update={"size": _listed.size + 1})
-        _extra = ParameterSetFileEntry(
+        _extra = OverlayFileEntry(
             path=f"{SLOT.relpath}/extra", size=0, digest=Sha256Digest("8" * 64)
         )
         for _held in ([_other_digest], [_other_size], [_listed, _extra], []):
             with pytest.raises(ValueError, match="other files"):
                 _config.check_files(_held)
 
-    def test_an_apply_of_the_set_not_among_its_files_is_refused(self):
+    def test_an_apply_of_the_overlay_not_among_its_files_is_refused(self):
         _slots = [{"name": SLOT.name, "path": SLOT.path, "apply": f"{SLOT_PATH}/a"}]
         with pytest.raises(ValidationError, match="not among its files"):
-            ParameterSetConfig.parse_metafile(json.dumps(config_dict(slots=_slots)))
+            OverlayConfig.parse_metafile(json.dumps(config_dict(slots=_slots)))
 
-    def test_an_apply_of_the_set_is_among_its_files_when_they_are_listed(self):
+    def test_an_apply_of_the_overlay_is_among_its_files_when_they_are_listed(self):
         _apply = f"{SLOT_PATH}/apply.sh"
         _slots = [{"name": SLOT.name, "path": SLOT.path, "apply": _apply}]
         _entry = {"path": _apply[1:], "size": 1, "digest": DIFF_ID}
-        _config = ParameterSetConfig.parse_metafile(
+        _config = OverlayConfig.parse_metafile(
             json.dumps(config_dict(slots=_slots, files=[_entry]))
         )
         assert _config.slots[0].apply == _apply
         _raw = config_dict(slots=_slots)
         del _raw["files"]
-        ParameterSetConfig.parse_metafile(json.dumps(_raw))
+        OverlayConfig.parse_metafile(json.dumps(_raw))
 
     def test_files_left_out_are_not_checked_and_an_empty_list_is(self):
         _raw = config_dict()
         del _raw["files"]
-        _without = ParameterSetConfig.parse_metafile(json.dumps(_raw))
+        _without = OverlayConfig.parse_metafile(json.dumps(_raw))
         assert _without.files is None
         assert "files" not in json.loads(_without.export_metafile())
         _without.check_files([])
 
-        _empty = ParameterSetConfig.parse_metafile(json.dumps(config_dict(files=[])))
+        _empty = OverlayConfig.parse_metafile(json.dumps(config_dict(files=[])))
         _empty.check_files([])
-        _a_file = ParameterSetFileEntry(
+        _a_file = OverlayFileEntry(
             path=f"{SLOT.relpath}/a", size=1, digest=Sha256Digest("8" * 64)
         )
         with pytest.raises(ValueError, match="other files"):
@@ -509,49 +504,46 @@ class TestConfig:
 
 class TestManifest:
     def test_a_manifest_carries_its_artifact_type_and_names_no_base(self):
-        _manifest = ParameterSetManifest.parse_metafile(json.dumps(manifest_dict()))
-        assert isinstance(_manifest.layer, ParameterLayerDescriptor)
+        _manifest = OverlayManifest.parse_metafile(json.dumps(manifest_dict()))
+        assert isinstance(_manifest.layer, OverlayLayerDescriptor)
         assert _manifest.version == "2026.10.29-1"
         assert _manifest.image_identifier == IMAGE_ID
 
         _exported = json.loads(_manifest.export_metafile())
-        assert _exported["artifactType"] == PARAMETER_SET_ARTIFACT
+        assert _exported["artifactType"] == OVERLAY_ARTIFACT
         assert "subject" not in _exported
-        assert (
-            ParameterSetManifest.parse_metafile(_manifest.export_metafile())
-            == _manifest
-        )
+        assert OverlayManifest.parse_metafile(_manifest.export_metafile()) == _manifest
 
-    def test_an_empty_set_carries_the_empty_descriptor(self):
-        _manifest = ParameterSetManifest.parse_metafile(
+    def test_an_empty_overlay_carries_the_empty_descriptor(self):
+        _manifest = OverlayManifest.parse_metafile(
             json.dumps(manifest_dict(empty=True))
         )
         assert _manifest.layer is None
         assert isinstance(_manifest.layers[0], EmptyDescriptor)
 
     @pytest.mark.parametrize("layers", (0, 2))
-    def test_a_set_has_exactly_one_layer(self, layers):
+    def test_an_overlay_has_exactly_one_layer(self, layers):
         _raw = manifest_dict()
         _raw["layers"] = _raw["layers"] * layers
         with pytest.raises(ValidationError, match="exactly one layer"):
-            ParameterSetManifest.parse_metafile(json.dumps(_raw))
+            OverlayManifest.parse_metafile(json.dumps(_raw))
 
     def test_the_manifest_and_its_config_agree(self):
-        _manifest = ParameterSetManifest.parse_metafile(json.dumps(manifest_dict()))
-        _config = ParameterSetConfig.parse_metafile(json.dumps(config_dict()))
+        _manifest = OverlayManifest.parse_metafile(json.dumps(manifest_dict()))
+        _config = OverlayConfig.parse_metafile(json.dumps(config_dict()))
         _manifest.check_config(_config)
 
         with pytest.raises(ValueError, match="version"):
             _manifest.check_config(
-                ParameterSetConfig.parse_metafile(json.dumps(config_dict(version="2")))
+                OverlayConfig.parse_metafile(json.dumps(config_dict(version="2")))
             )
-        _empty = ParameterSetConfig.parse_metafile(
+        _empty = OverlayConfig.parse_metafile(
             json.dumps(config_dict(slots=[], diff_ids=[], files=[]))
         )
         with pytest.raises(ValueError, match="empty"):
             _manifest.check_config(_empty)
 
-        _empty_manifest = ParameterSetManifest.parse_metafile(
+        _empty_manifest = OverlayManifest.parse_metafile(
             json.dumps(manifest_dict(empty=True))
         )
         _empty_manifest.check_config(_empty)
@@ -571,7 +563,7 @@ class TestIndex:
     def entry(self, **kw) -> dict:
         _e = {
             "mediaType": IMAGE_MANIFEST,
-            "artifactType": PARAMETER_SET_ARTIFACT,
+            "artifactType": OVERLAY_ARTIFACT,
             "digest": "sha256:" + "5" * 64,
             "size": 900,
             "annotations": MANIFEST_ANNOTATIONS,
@@ -579,20 +571,20 @@ class TestIndex:
         _e.update(kw)
         return _e
 
-    def test_an_index_lists_a_parameter_set_as_the_ecus_payload(self):
+    def test_an_index_lists_an_overlay_as_the_ecus_payload(self):
         _index = ImageIndex.parse_metafile(json.dumps(self.index_dict(self.entry())))
-        _found = _index.find_parameter_set(IMAGE_ID)
-        assert isinstance(_found, ParameterSetManifest.Descriptor)
-        assert _found.annotations.parameter_set_version == "2026.10.29-1"
+        _found = _index.find_overlay(IMAGE_ID)
+        assert isinstance(_found, OverlayManifest.Descriptor)
+        assert _found.annotations.overlay_version == "2026.10.29-1"
         assert _index.find_image(IMAGE_ID) is None
         assert _index.find_partition_image(IMAGE_ID) is None
         assert _index.image_identifiers == [IMAGE_ID]
         assert _index.image_resource_table is None
 
         _exported = json.loads(_index.export_metafile())
-        assert _exported["manifests"][0]["artifactType"] == PARAMETER_SET_ARTIFACT
+        assert _exported["manifests"][0]["artifactType"] == OVERLAY_ARTIFACT
 
-    def test_a_parameter_image_carries_parameter_sets_only(self):
+    def test_an_overlay_image_carries_overlays_only(self):
         _index = ImageIndex.parse_metafile(json.dumps(self.index_dict(self.entry())))
         _base = ImageManifest.Descriptor.model_validate(
             {
@@ -602,12 +594,12 @@ class TestIndex:
                 "annotations": {PLATFORM_ECU: "perception", OTA_RELEASE_KEY: "dev"},
             }
         )
-        with pytest.raises(ValueError, match="parameter sets only"):
+        with pytest.raises(ValueError, match="overlays only"):
             _index.add_image(_base)
 
-        # the sets of other ECUs go in
+        # the overlays of other ECUs go in
         _index.add_image(
-            ParameterSetManifest.Descriptor.model_validate(
+            OverlayManifest.Descriptor.model_validate(
                 {
                     **self.entry(),
                     "annotations": {**MANIFEST_ANNOTATIONS, PLATFORM_ECU: "perception"},
@@ -619,20 +611,20 @@ class TestIndex:
         _raw = self.entry()
         del _raw["artifactType"]
         _base_index = ImageIndex.parse_metafile(json.dumps(self.index_dict(_raw)))
-        _set = ParameterSetManifest.Descriptor.model_validate(
+        _overlay = OverlayManifest.Descriptor.model_validate(
             {
                 **self.entry(),
                 "annotations": {**MANIFEST_ANNOTATIONS, PLATFORM_ECU: "perception"},
             }
         )
-        with pytest.raises(ValueError, match="parameter sets only"):
-            _base_index.add_image(_set)
+        with pytest.raises(ValueError, match="overlays only"):
+            _base_index.add_image(_overlay)
 
     def test_an_entry_without_artifact_type_is_a_file_based_payload(self):
         _raw = self.entry()
         del _raw["artifactType"]
         _index = ImageIndex.parse_metafile(json.dumps(self.index_dict(_raw)))
-        assert _index.find_parameter_set(IMAGE_ID) is None
+        assert _index.find_overlay(IMAGE_ID) is None
         assert _index.find_image(IMAGE_ID) is not None
 
 
@@ -651,7 +643,7 @@ class TestLayer:
 
         _out = tmp_path / "out"
         _out.mkdir()
-        _read = read_parameter_layer(
+        _read = read_overlay_layer(
             io.BytesIO(_blob),
             [SLOT],
             extract_to=_out,
@@ -693,7 +685,7 @@ class TestLayer:
         _root = tmp_path / "tree"
         _root.mkdir()
         (_root / "opt").symlink_to(_elsewhere / "opt")
-        with pytest.raises(ParameterLayerInvalid, match="behind a symbolic link"):
+        with pytest.raises(OverlayLayerInvalid, match="behind a symbolic link"):
             layer_bytes(_root)
 
     def test_the_reader_unpacks_into_an_empty_target_only(self, tmp_path: Path):
@@ -706,11 +698,11 @@ class TestLayer:
         _readme.parent.mkdir(parents=True)
         _readme.symlink_to(_victim)
         with pytest.raises(ValueError, match="not empty"):
-            read_parameter_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
+            read_overlay_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
         assert _victim.read_text() == "untouched\n"
 
         # a target that is not there yet is made
-        read_parameter_layer(io.BytesIO(_blob), [SLOT], extract_to=tmp_path / "new")
+        read_overlay_layer(io.BytesIO(_blob), [SLOT], extract_to=tmp_path / "new")
         assert (tmp_path / "new" / SLOT.relpath / "README").is_file()
 
     def test_a_short_write_is_written_on(
@@ -730,7 +722,7 @@ class TestLayer:
 
         _out = tmp_path / "out"
         monkeypatch.setattr(layer_module.os, "write", _short_write)
-        read_parameter_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
+        read_overlay_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
         monkeypatch.undo()
         assert (_out / SLOT.relpath / "big").read_bytes() == _data
 
@@ -741,7 +733,7 @@ class TestLayer:
         _locked = _root / SLOT.relpath / "default"
         _locked.chmod(0o300)
         try:
-            with pytest.raises(ParameterLayerInvalid, match="cannot read"):
+            with pytest.raises(OverlayLayerInvalid, match="cannot read"):
                 layer_bytes(_root)
         finally:
             _locked.chmod(0o755)
@@ -753,7 +745,7 @@ class TestLayer:
         try:
             _blob, _ = layer_bytes(_root)
             _out = tmp_path / "out"
-            read_parameter_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
+            read_overlay_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
             _unpacked = _out / SLOT.relpath / "default"
             assert (_unpacked / "vehicle.param.yaml").read_text() == "max_speed: 10\n"
             assert stat.S_IMODE(_unpacked.stat().st_mode) == 0o555
@@ -765,7 +757,7 @@ class TestLayer:
     def test_two_slots_in_one_layer(self, tmp_path: Path):
         _root = make_tree(make_tree(tmp_path / "tree"), OTHER_SLOT)
         _blob, _ = layer_bytes(_root, (OTHER_SLOT, SLOT))
-        _info = read_parameter_layer(io.BytesIO(_blob), [SLOT, OTHER_SLOT])
+        _info = read_overlay_layer(io.BytesIO(_blob), [SLOT, OTHER_SLOT])
         assert len(_info.files) == 6
 
     def test_the_permission_bits_are_kept(self, tmp_path: Path):
@@ -774,7 +766,7 @@ class TestLayer:
         _blob, _ = layer_bytes(_root)
         _out = tmp_path / "out"
         _out.mkdir()
-        read_parameter_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
+        read_overlay_layer(io.BytesIO(_blob), [SLOT], extract_to=_out)
         assert stat.S_IMODE((_out / SLOT.relpath / "README").stat().st_mode) == 0o600
 
     @pytest.mark.parametrize(
@@ -788,10 +780,12 @@ class TestLayer:
             pytest.param(lambda p: os.chmod(p / "README", 0o4755), id="setuid"),
         ),
     )
-    def test_the_writer_refuses_what_a_set_does_not_hold(self, tmp_path: Path, spoil):
+    def test_the_writer_refuses_what_an_overlay_does_not_hold(
+        self, tmp_path: Path, spoil
+    ):
         _root = make_tree(tmp_path / "tree")
         spoil(_root / SLOT.relpath)
-        with pytest.raises(ParameterLayerInvalid):
+        with pytest.raises(OverlayLayerInvalid):
             layer_bytes(_root)
 
     def test_the_writer_refuses_a_missing_slot(self, tmp_path: Path):
@@ -829,7 +823,7 @@ class TestLayer:
             ),
             pytest.param(
                 [*slot_members(), member("etc/passwd", data=b"x")],
-                "not in one of the set's slots",
+                "not in one of the overlay's slots",
                 id="outside",
             ),
             pytest.param(
@@ -904,13 +898,13 @@ class TestLayer:
             ),
         ),
     )
-    def test_the_reader_refuses_what_a_set_does_not_hold(
+    def test_the_reader_refuses_what_an_overlay_does_not_hold(
         self, tmp_path: Path, members, refusal
     ):
         _out = tmp_path / "out"
         _out.mkdir()
-        with pytest.raises(ParameterLayerInvalid, match=refusal):
-            read_parameter_layer(io.BytesIO(zstd_tar(members)), [SLOT], extract_to=_out)
+        with pytest.raises(OverlayLayerInvalid, match=refusal):
+            read_overlay_layer(io.BytesIO(zstd_tar(members)), [SLOT], extract_to=_out)
         # what came before the refused member may be there, for the caller to
         #   discard; nothing is written outside the slot, nor outside the target
         _written = [
@@ -927,24 +921,22 @@ class TestLayer:
             member(f"./{SLOT.relpath}/d/", tarfile.DIRTYPE, mode=0o755),
             member(f"./{SLOT.relpath}/d/f", data=b"f"),
         ]
-        _info = read_parameter_layer(io.BytesIO(zstd_tar(_members)), [SLOT])
+        _info = read_overlay_layer(io.BytesIO(zstd_tar(_members)), [SLOT])
         assert [_f.path for _f in _info.files] == [f"{SLOT.relpath}/d/f"]
 
     def test_a_layer_bigger_than_the_bound_is_refused(self, tmp_path: Path):
         _blob, _info = layer_bytes(make_tree(tmp_path / "tree"))
-        with pytest.raises(ParameterLayerInvalid, match="exceed"):
-            read_parameter_layer(
-                io.BytesIO(_blob), [SLOT], max_size=_info.files_size - 1
-            )
-        read_parameter_layer(io.BytesIO(_blob), [SLOT], max_size=_info.files_size)
+        with pytest.raises(OverlayLayerInvalid, match="exceed"):
+            read_overlay_layer(io.BytesIO(_blob), [SLOT], max_size=_info.files_size - 1)
+        read_overlay_layer(io.BytesIO(_blob), [SLOT], max_size=_info.files_size)
 
     def test_digests_that_do_not_match_are_refused(self, tmp_path: Path):
         _blob, _info = layer_bytes(make_tree(tmp_path / "tree"))
         _other = Sha256Digest("0" * 64)
-        with pytest.raises(ParameterLayerInvalid, match="tar"):
-            read_parameter_layer(io.BytesIO(_blob), [SLOT], diff_id=_other)
-        with pytest.raises(ParameterLayerInvalid, match="blob"):
-            read_parameter_layer(io.BytesIO(_blob), [SLOT], blob_digest=_other)
+        with pytest.raises(OverlayLayerInvalid, match="tar"):
+            read_overlay_layer(io.BytesIO(_blob), [SLOT], diff_id=_other)
+        with pytest.raises(OverlayLayerInvalid, match="blob"):
+            read_overlay_layer(io.BytesIO(_blob), [SLOT], blob_digest=_other)
 
     def test_zero_padding_after_the_archive_is_read_and_hashed(self):
         """Past what the reader buffers, too: it is in the diff_id."""
@@ -955,15 +947,15 @@ class TestLayer:
         _raw = raw_tar(_members)
         _padded = _raw + b"\0" * (MAX_TAR_TRAILER - (len(_raw) - tar_members_end(_raw)))
         assert len(_padded) > READ_SIZE
-        _info = read_parameter_layer(
+        _info = read_overlay_layer(
             io.BytesIO(zstandard.ZstdCompressor().compress(_padded)),
             [SLOT],
             diff_id=Sha256Digest(sha256(_padded).hexdigest()),
         )
         assert len(_info.files) == 1
 
-        with pytest.raises(ParameterLayerInvalid, match="after the last member"):
-            read_parameter_layer(
+        with pytest.raises(OverlayLayerInvalid, match="after the last member"):
+            read_overlay_layer(
                 io.BytesIO(zstandard.ZstdCompressor().compress(_padded + b"\0")),
                 [SLOT],
             )
@@ -976,23 +968,23 @@ class TestLayer:
         _layer = zstandard.ZstdCompressor().compress(
             raw_tar(slot_members()) + _smuggled
         )
-        with pytest.raises(ParameterLayerInvalid, match="more than zero padding"):
-            read_parameter_layer(io.BytesIO(_layer), [SLOT])
+        with pytest.raises(OverlayLayerInvalid, match="more than zero padding"):
+            read_overlay_layer(io.BytesIO(_layer), [SLOT])
 
     def test_a_tar_cut_short_is_refused(self):
         """It ends at a member's end, where tarfile stops without a word."""
         _raw = raw_tar([*slot_members(), member(f"{SLOT.relpath}/a", data=b"a")])
         _cut = _raw[: tar_members_end(_raw)]
-        with pytest.raises(ParameterLayerInvalid, match="end-of-archive"):
-            read_parameter_layer(
+        with pytest.raises(OverlayLayerInvalid, match="end-of-archive"):
+            read_overlay_layer(
                 io.BytesIO(zstandard.ZstdCompressor().compress(_cut)), [SLOT]
             )
 
     def test_what_is_not_a_zstd_tar_is_refused(self):
-        with pytest.raises(ParameterLayerInvalid):
-            read_parameter_layer(io.BytesIO(b"not zstd at all"), [SLOT])
-        with pytest.raises(ParameterLayerInvalid):
-            read_parameter_layer(
+        with pytest.raises(OverlayLayerInvalid):
+            read_overlay_layer(io.BytesIO(b"not zstd at all"), [SLOT])
+        with pytest.raises(OverlayLayerInvalid):
+            read_overlay_layer(
                 io.BytesIO(zstandard.ZstdCompressor().compress(b"not a tar" * 100)),
                 [SLOT],
             )
@@ -1022,7 +1014,7 @@ class TestInTheTree:
         _root = base_tree_at(tmp_path / "rootfs")
         shutil.rmtree(_root / SLOT.relpath)
         check_slots_in_tree(_root, [SLOT])
-        _slot = ParameterSlot(name="s", path=SLOT_PATH, apply="reboot")
+        _slot = OverlaySlot(name="s", path=SLOT_PATH, apply="reboot")
         shutil.rmtree(_root / "opt" / "autoware" / "vehicle")
         check_slots_in_tree(_root, [_slot])
 
@@ -1032,13 +1024,13 @@ class TestInTheTree:
         (_root / SLOT.relpath).write_text("a file\n")
         with pytest.raises(ValueError, match="is not a directory"):
             check_slots_in_tree(_root, [SLOT])
-        _slot = ParameterSlot(name="s", path=f"{SLOT_PATH}/sub", apply="reboot")
+        _slot = OverlaySlot(name="s", path=f"{SLOT_PATH}/sub", apply="reboot")
         with pytest.raises(ValueError, match="behind a file"):
             check_slots_in_tree(_root, [_slot])
 
     def test_a_base_that_is_not_there(self, tmp_path: Path):
         """Not room enough: a missing root is not an empty base."""
-        _slot = ParameterSlot(name="s", path=SLOT_PATH, apply="reboot")
+        _slot = OverlaySlot(name="s", path=SLOT_PATH, apply="reboot")
         with pytest.raises(ValueError, match="not a directory"):
             check_slots_in_tree(tmp_path / "missing", [_slot])
         (tmp_path / "a_file").write_text("x\n")
@@ -1051,7 +1043,7 @@ class TestInTheTree:
         _outside.mkdir()
         shutil.rmtree(_root / "opt" / "autoware" / "vehicle")
         (_root / "opt" / "autoware" / "vehicle").symlink_to(_outside)
-        _slot = ParameterSlot(name="s", path=SLOT_PATH, apply="reboot")
+        _slot = OverlaySlot(name="s", path=SLOT_PATH, apply="reboot")
         with pytest.raises(ValueError, match="symbolic link"):
             check_slots_in_tree(_root, [_slot])
 
@@ -1060,19 +1052,19 @@ class TestInTheTree:
         _root = base_tree_at(tmp_path / "rootfs")
         _closed = _root / "opt" / "autoware"
         _closed.chmod(0)
-        _slot = ParameterSlot(name="s", path=f"{SLOT_PATH}/new", apply="reboot")
+        _slot = OverlaySlot(name="s", path=f"{SLOT_PATH}/new", apply="reboot")
         try:
             with pytest.raises(ValueError, match="cannot look at"):
                 check_slots_in_tree(_root, [_slot])
         finally:
             _closed.chmod(0o755)
 
-    def test_an_apply_that_comes_with_the_set_is_not_looked_for_in_the_base(
+    def test_an_apply_that_comes_with_the_overlay_is_not_looked_for_in_the_base(
         self, tmp_path: Path
     ):
         _root = tmp_path / "rootfs"
         _root.mkdir()
-        _slot = ParameterSlot(name="s", path=SLOT_PATH, apply=f"{SLOT_PATH}/apply.sh")
+        _slot = OverlaySlot(name="s", path=SLOT_PATH, apply=f"{SLOT_PATH}/apply.sh")
         check_slots_in_tree(_root, [_slot])
 
     def test_an_apply_the_base_does_not_have(self, tmp_path: Path):
@@ -1094,7 +1086,7 @@ class TestInTheTree:
         """Another base may have a file where this one has a directory."""
         _root = base_tree_at(tmp_path / "rootfs")
         (_root / "opt" / "tools").write_text("a file\n")
-        _slot = ParameterSlot(name="s", path=SLOT_PATH, apply="/opt/tools/apply.sh")
+        _slot = OverlaySlot(name="s", path=SLOT_PATH, apply="/opt/tools/apply.sh")
         with pytest.raises(ValueError, match="no apply"):
             check_slots_in_tree(_root, [_slot])
 
@@ -1122,23 +1114,23 @@ class TestInTheTree:
         (_root / "ota-cache").symlink_to(
             "/opt/data/ota-cache" if absolute else "opt/data/./ota-cache"
         )
-        _cache = ParameterSlot(name="c", path="/opt/data/ota-cache", apply="reboot")
+        _cache = OverlaySlot(name="c", path="/opt/data/ota-cache", apply="reboot")
         with pytest.raises(ValueError, match="where /ota-cache leads in the base"):
             check_slots_in_tree(_root, [_cache], reserved=["/ota-cache"])
-        _above = ParameterSlot(name="c", path="/opt/data", apply="reboot")
+        _above = OverlaySlot(name="c", path="/opt/data", apply="reboot")
         with pytest.raises(ValueError, match="where /ota-cache leads in the base"):
             check_slots_in_tree(_root, [_above], reserved=["/ota-cache"])
         # the link's own name is all that is reserved without it
         check_slots_in_tree(_root, [_cache])
         # a slot next to where it leads
-        _next = ParameterSlot(name="c", path="/opt/data/ota-cachex", apply="reboot")
+        _next = OverlaySlot(name="c", path="/opt/data/ota-cachex", apply="reboot")
         check_slots_in_tree(_root, [_next], reserved=["/ota-cache"])
 
     def test_a_link_in_a_reserved_path_of_the_library(self, tmp_path: Path):
         _root = base_tree_at(tmp_path / "rootfs")
         (_root / "opt/data/ota-client").mkdir(parents=True)
         (_root / "opt/ota").symlink_to("/opt/data/ota-client")
-        _slot = ParameterSlot(name="c", path="/opt/data/ota-client", apply="reboot")
+        _slot = OverlaySlot(name="c", path="/opt/data/ota-client", apply="reboot")
         with pytest.raises(ValueError, match="where /opt/ota leads in the base"):
             check_slots_in_tree(_root, [_slot])
 
@@ -1165,86 +1157,88 @@ class TestInTheTree:
             check_slots_in_tree(_root, [SLOT])
 
 
-class TestAppliesInTheSet:
-    APPLY_IN_SET = ParameterSlot(
+class TestAppliesInTheOverlay:
+    APPLY_IN_OVERLAY = OverlaySlot(
         name="s", path=SLOT_PATH, apply=f"{SLOT_PATH}/apply.sh"
     )
 
-    def _set_at(self, root: Path, mode: int = 0o755) -> Path:
-        _apply = root / self.APPLY_IN_SET.apply[1:]
+    def _overlay_at(self, root: Path, mode: int = 0o755) -> Path:
+        _apply = root / self.APPLY_IN_OVERLAY.apply[1:]
         _apply.parent.mkdir(parents=True)
         _apply.write_text("#!/bin/sh\n")
         _apply.chmod(mode)
         return root
 
-    def test_the_set_carries_its_apply(self, tmp_path: Path):
-        check_applies_in_set(self._set_at(tmp_path / "set"), [self.APPLY_IN_SET])
-        # the base's applies are not looked for in the set
-        check_applies_in_set(tmp_path / "set", [SLOT, OTHER_SLOT])
+    def test_the_overlay_carries_its_apply(self, tmp_path: Path):
+        check_applies_in_overlay(
+            self._overlay_at(tmp_path / "overlay"), [self.APPLY_IN_OVERLAY]
+        )
+        # the base's applies are not looked for in the overlay
+        check_applies_in_overlay(tmp_path / "overlay", [SLOT, OTHER_SLOT])
 
-    def test_an_apply_the_set_does_not_carry(self, tmp_path: Path):
-        (tmp_path / "set").mkdir()
-        with pytest.raises(ValueError, match="the set has no apply"):
-            check_applies_in_set(tmp_path / "set", [self.APPLY_IN_SET])
+    def test_an_apply_the_overlay_does_not_carry(self, tmp_path: Path):
+        (tmp_path / "overlay").mkdir()
+        with pytest.raises(ValueError, match="the overlay has no apply"):
+            check_applies_in_overlay(tmp_path / "overlay", [self.APPLY_IN_OVERLAY])
 
-    def test_an_apply_of_the_set_that_does_not_execute(self, tmp_path: Path):
-        _root = self._set_at(tmp_path / "set", mode=0o644)
-        with pytest.raises(ValueError, match="not an executable file of the set"):
-            check_applies_in_set(_root, [self.APPLY_IN_SET])
+    def test_an_apply_of_the_overlay_that_does_not_execute(self, tmp_path: Path):
+        _root = self._overlay_at(tmp_path / "overlay", mode=0o644)
+        with pytest.raises(ValueError, match="not an executable file of the overlay"):
+            check_applies_in_overlay(_root, [self.APPLY_IN_OVERLAY])
 
-    def test_an_apply_of_the_set_others_can_write(self, tmp_path: Path):
+    def test_an_apply_of_the_overlay_others_can_write(self, tmp_path: Path):
         """It runs as root: others must not be able to change it on the way."""
-        _root = self._set_at(tmp_path / "set", mode=0o757)
+        _root = self._overlay_at(tmp_path / "overlay", mode=0o757)
         with pytest.raises(ValueError, match="others can write"):
-            check_applies_in_set(_root, [self.APPLY_IN_SET])
-        (_root / self.APPLY_IN_SET.apply[1:]).chmod(0o775)  # the group: root's
-        check_applies_in_set(_root, [self.APPLY_IN_SET])
-        (_root / self.APPLY_IN_SET.relpath).chmod(0o777)
+            check_applies_in_overlay(_root, [self.APPLY_IN_OVERLAY])
+        (_root / self.APPLY_IN_OVERLAY.apply[1:]).chmod(0o775)  # the group: root's
+        check_applies_in_overlay(_root, [self.APPLY_IN_OVERLAY])
+        (_root / self.APPLY_IN_OVERLAY.relpath).chmod(0o777)
         with pytest.raises(ValueError, match="others can write"):
-            check_applies_in_set(_root, [self.APPLY_IN_SET])
-        (_root / self.APPLY_IN_SET.relpath).chmod(0o755)
-        # above the slot is the base's, not the set's
+            check_applies_in_overlay(_root, [self.APPLY_IN_OVERLAY])
+        (_root / self.APPLY_IN_OVERLAY.relpath).chmod(0o755)
+        # above the slot is the base's, not the overlay's
         (_root / "opt").chmod(0o777)
-        check_applies_in_set(_root, [self.APPLY_IN_SET])
+        check_applies_in_overlay(_root, [self.APPLY_IN_OVERLAY])
 
-    def test_an_apply_of_the_set_behind_a_link(self, tmp_path: Path):
-        _root = self._set_at(tmp_path / "set")
-        _apply = _root / self.APPLY_IN_SET.apply[1:]
+    def test_an_apply_of_the_overlay_behind_a_link(self, tmp_path: Path):
+        _root = self._overlay_at(tmp_path / "overlay")
+        _apply = _root / self.APPLY_IN_OVERLAY.apply[1:]
         _real = _apply.with_name("real.sh")
         os.replace(_apply, _real)
         _apply.symlink_to(_real)
         with pytest.raises(ValueError, match="symbolic link"):
-            check_applies_in_set(_root, [self.APPLY_IN_SET])
+            check_applies_in_overlay(_root, [self.APPLY_IN_OVERLAY])
 
 
 #
-# ------ laying a set over a base tree ------ #
+# ------ laying an overlay over a base tree ------ #
 #
 
 
-def build_parameter_image(
+def build_overlay_image(
     tmp_path: Path,
     *,
     tree: Path | None,
     config_update: dict | None = None,
     index_annotations: dict | None = None,
 ) -> Path:
-    """A parameter image artifact with one set for ECU; an empty set when `tree` is
-    None. `config_update` and `index_annotations` spoil the config and the index
-    entry, unchecked."""
-    _image_root = tmp_path / "parameter_image"
+    """An overlay image artifact with one overlay for ECU; an empty overlay when
+    `tree` is None. `config_update` and `index_annotations` spoil the config and the
+    index entry, unchecked."""
+    _image_root = tmp_path / "overlay_image"
     _resource_dir = _image_root / RESOURCE_DIR
     _resource_dir.mkdir(parents=True)
     if tree is None:
         _layer = EmptyDescriptor.add_contents_to_resource_dir(EMPTY_JSON, _resource_dir)
-        _config = ParameterSetConfig(name="p", version="2026.10.29-1")
+        _config = OverlayConfig(name="p", version="2026.10.29-1")
     else:
         _out = io.BytesIO()
-        _info = write_parameter_layer(tree, [SLOT], _out)
-        _layer = ParameterLayerDescriptor.add_contents_to_resource_dir(
+        _info = write_overlay_layer(tree, [SLOT], _out)
+        _layer = OverlayLayerDescriptor.add_contents_to_resource_dir(
             _out.getvalue(), _resource_dir
         )
-        _config = ParameterSetConfig(
+        _config = OverlayConfig(
             name="p",
             version="2026.10.29-1",
             slots=[SLOT],
@@ -1253,22 +1247,20 @@ def build_parameter_image(
         )
     if config_update:
         _config = _config.model_copy(update=config_update)
-    _config_descriptor = ParameterSetConfig.Descriptor.export_metafile_to_resource_dir(
+    _config_descriptor = OverlayConfig.Descriptor.export_metafile_to_resource_dir(
         _config, _resource_dir
     )
-    _manifest = ParameterSetManifest(
+    _manifest = OverlayManifest(
         config=_config_descriptor,
         layers=[_layer],
-        annotations=ParameterSetManifest.Annotations.model_validate(
-            MANIFEST_ANNOTATIONS
-        ),
+        annotations=OverlayManifest.Annotations.model_validate(MANIFEST_ANNOTATIONS),
     )
     _index = ImageIndex(
         manifests=[],
         annotations=ImageIndex.Annotations.model_validate({BUILD_TOOL_VERSION: "test"}),
     )
     _index.add_image(
-        ParameterSetManifest.Descriptor.export_metafile_to_resource_dir(
+        OverlayManifest.Descriptor.export_metafile_to_resource_dir(
             _manifest,
             _resource_dir,
             annotations=index_annotations or MANIFEST_ANNOTATIONS,
@@ -1276,7 +1268,7 @@ def build_parameter_image(
     )
     (_image_root / IMAGE_INDEX_FNAME).write_text(_index.export_metafile())
 
-    _artifact = tmp_path / "parameter_image.zip"
+    _artifact = tmp_path / "overlay_image.zip"
     with ZipFile(_artifact, "w", compression=ZIP_STORED) as zf:
         zf.write(_image_root / IMAGE_INDEX_FNAME, IMAGE_INDEX_FNAME)
         for _blob in sorted(_resource_dir.iterdir()):
@@ -1284,10 +1276,10 @@ def build_parameter_image(
     return _artifact
 
 
-class TestOverlay:
+class TestLayOverlay:
     @pytest.fixture
     def base_tree(self, tmp_path: Path) -> Path:
-        """A deployed base: the slot's defaults, one of them gone from the set."""
+        """A deployed base: the slot's defaults, one of them gone from the overlay."""
         _root = tmp_path / "rootfs"
         _slot = _root / SLOT.relpath
         (_slot / "default").mkdir(parents=True)
@@ -1299,17 +1291,17 @@ class TestOverlay:
         (_root / APPLY[1:]).chmod(0o755)
         return _root
 
-    def overlay(self, tmp_path: Path, rootfs: Path, artifact: Path, **kw):
+    def lay(self, tmp_path: Path, rootfs: Path, artifact: Path, **kw):
         _tmp = tmp_path / "tmp"
         _tmp.mkdir()
         _args = dict(
             rootfs_dir=rootfs,
-            parameter_image=artifact,
+            overlay_image=artifact,
             image_id=IMAGE_ID,
             tmp_dir=_tmp,
         )
         _args.update(kw)
-        return overlay_parameter_set(**_args)
+        return lay_overlay(**_args)
 
     def test_a_slot_the_base_does_not_have_is_made(
         self, tmp_path: Path, base_tree: Path
@@ -1318,82 +1310,82 @@ class TestOverlay:
         (base_tree / APPLY[1:]).parent.mkdir(parents=True)
         (base_tree / APPLY[1:]).write_text("#!/bin/sh\n")
         (base_tree / APPLY[1:]).chmod(0o755)
-        _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))
-        self.overlay(tmp_path, base_tree, _artifact)
+        _artifact = build_overlay_image(tmp_path, tree=make_tree(tmp_path / "overlay"))
+        self.lay(tmp_path, base_tree, _artifact)
         assert (base_tree / SLOT.relpath / "default" / "vehicle.param.yaml").exists()
 
-    APPLY_IN_SET = f"{SLOT_PATH}/apply.sh"
+    APPLY_IN_OVERLAY = f"{SLOT_PATH}/apply.sh"
 
-    def _set_with_its_apply(self, root: Path) -> Path:
+    def _overlay_with_its_apply(self, root: Path) -> Path:
         make_tree(root)
-        (root / self.APPLY_IN_SET[1:]).write_text("#!/bin/sh\n")
-        (root / self.APPLY_IN_SET[1:]).chmod(0o755)
+        (root / self.APPLY_IN_OVERLAY[1:]).write_text("#!/bin/sh\n")
+        (root / self.APPLY_IN_OVERLAY[1:]).chmod(0o755)
         return root
 
-    def test_an_apply_the_set_carries(self, tmp_path: Path, base_tree: Path):
-        """The base has no such apply, and need not: what runs is the set's."""
+    def test_an_apply_the_overlay_carries(self, tmp_path: Path, base_tree: Path):
+        """The base has no such apply, and need not: what runs is the overlay's."""
         _slots = [
-            ParameterSlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_SET)
+            OverlaySlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_OVERLAY)
         ]
-        _artifact = build_parameter_image(
+        _artifact = build_overlay_image(
             tmp_path,
-            tree=self._set_with_its_apply(tmp_path / "set"),
+            tree=self._overlay_with_its_apply(tmp_path / "overlay"),
             config_update={"slots": _slots},
         )
-        _config = self.overlay(tmp_path, base_tree, _artifact)
-        assert _config.slots[0].apply == self.APPLY_IN_SET
-        assert os.access(base_tree / self.APPLY_IN_SET[1:], os.X_OK)
+        _config = self.lay(tmp_path, base_tree, _artifact)
+        assert _config.slots[0].apply == self.APPLY_IN_OVERLAY
+        assert os.access(base_tree / self.APPLY_IN_OVERLAY[1:], os.X_OK)
 
     @pytest.mark.parametrize(
         "files, mode, match",
         (
             ("the layer's", None, "not among its files"),
-            (None, None, "the set has no apply"),
-            ("the layer's", 0o644, "not an executable file of the set"),
+            (None, None, "the overlay has no apply"),
+            ("the layer's", 0o644, "not an executable file of the overlay"),
             ("the layer's", 0o757, "others can write"),
         ),
         ids=("not_listed", "not_carried", "not_executable", "others_can_write"),
     )
-    def test_an_apply_the_set_does_not_carry_as_it_should_is_refused(
+    def test_an_apply_the_overlay_does_not_carry_as_it_should_is_refused(
         self, tmp_path: Path, base_tree: Path, files, mode, match
     ):
         _slots = [
-            ParameterSlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_SET)
+            OverlaySlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_OVERLAY)
         ]
-        _tree = make_tree(tmp_path / "set")
+        _tree = make_tree(tmp_path / "overlay")
         if mode is not None:
-            (_tree / self.APPLY_IN_SET[1:]).write_text("#!/bin/sh\n")
-            (_tree / self.APPLY_IN_SET[1:]).chmod(mode)
+            (_tree / self.APPLY_IN_OVERLAY[1:]).write_text("#!/bin/sh\n")
+            (_tree / self.APPLY_IN_OVERLAY[1:]).chmod(mode)
         _update: dict = {"slots": _slots}
         if files is None:
             _update["files"] = None
-        _artifact = build_parameter_image(tmp_path, tree=_tree, config_update=_update)
-        with pytest.raises(ParameterSetInvalid, match=match):
-            self.overlay(tmp_path, base_tree, _artifact)
+        _artifact = build_overlay_image(tmp_path, tree=_tree, config_update=_update)
+        with pytest.raises(OverlayInvalid, match=match):
+            self.lay(tmp_path, base_tree, _artifact)
         assert (base_tree / SLOT.relpath / "only_in_the_base").exists(), "unchanged"
 
-    def test_an_overlay_the_base_does_not_have_at_all(
+    def test_an_overlay_the_base_has_no_directory_for(
         self, tmp_path: Path, base_tree: Path
     ):
-        """What this is for: the base has none of the vehicle overlay, the set fills
-        it and carries its apply. The directories made are 0755 whatever the
-        umask."""
+        """What this is for: the base has none of the vehicle's directories, the
+        overlay fills its slot there and carries its apply. The directories made are
+        0755 whatever the umask."""
         shutil.rmtree(base_tree / "opt" / "autoware" / "vehicle")
         _slots = [
-            ParameterSlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_SET)
+            OverlaySlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_OVERLAY)
         ]
-        _artifact = build_parameter_image(
+        _artifact = build_overlay_image(
             tmp_path,
-            tree=self._set_with_its_apply(tmp_path / "set"),
+            tree=self._overlay_with_its_apply(tmp_path / "overlay"),
             config_update={"slots": _slots},
         )
         _umask = os.umask(0)
         try:
-            self.overlay(tmp_path, base_tree, _artifact)
+            self.lay(tmp_path, base_tree, _artifact)
         finally:
             os.umask(_umask)
         assert (base_tree / SLOT.relpath / "default" / "vehicle.param.yaml").exists()
-        assert os.access(base_tree / self.APPLY_IN_SET[1:], os.X_OK)
+        assert os.access(base_tree / self.APPLY_IN_OVERLAY[1:], os.X_OK)
         for _made in ("opt/autoware/vehicle", "opt/autoware/vehicle/sample_vehicle"):
             assert stat.S_IMODE((base_tree / _made).stat().st_mode) == 0o755
 
@@ -1402,15 +1394,15 @@ class TestOverlay:
     ):
         shutil.rmtree(base_tree / "opt" / "autoware" / "vehicle")
         _slots = [
-            ParameterSlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_SET)
+            OverlaySlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_OVERLAY)
         ]
-        _artifact = build_parameter_image(
+        _artifact = build_overlay_image(
             tmp_path,
-            tree=make_tree(tmp_path / "set"),
+            tree=make_tree(tmp_path / "overlay"),
             config_update={"slots": _slots, "files": None},
         )
-        with pytest.raises(ParameterSetInvalid, match="the set has no apply"):
-            self.overlay(tmp_path, base_tree, _artifact)
+        with pytest.raises(OverlayInvalid, match="the overlay has no apply"):
+            self.lay(tmp_path, base_tree, _artifact)
         assert not (base_tree / "opt" / "autoware" / "vehicle").exists()
 
     def test_directories_made_go_when_the_slots_cannot_be_put_in_place(
@@ -1418,25 +1410,25 @@ class TestOverlay:
     ):
         shutil.rmtree(base_tree / "opt" / "autoware" / "vehicle")
         _slots = [
-            ParameterSlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_SET)
+            OverlaySlot(name=SLOT.name, path=SLOT_PATH, apply=self.APPLY_IN_OVERLAY)
         ]
-        _artifact = build_parameter_image(
+        _artifact = build_overlay_image(
             tmp_path,
-            tree=self._set_with_its_apply(tmp_path / "set"),
+            tree=self._overlay_with_its_apply(tmp_path / "overlay"),
             config_update={"slots": _slots},
         )
         mocker.patch.object(
-            deploy_parameter_set_module.shutil, "move", side_effect=OSError("no space")
+            deploy_overlay_module.shutil, "move", side_effect=OSError("no space")
         )
         with pytest.raises(OSError, match="no space"):
-            self.overlay(tmp_path, base_tree, _artifact)
+            self.lay(tmp_path, base_tree, _artifact)
         assert not (base_tree / "opt" / "autoware" / "vehicle").exists()
 
-    def test_the_set_replaces_its_slot_and_leaves_the_others(
+    def test_the_overlay_replaces_its_slot_and_leaves_the_others(
         self, tmp_path: Path, base_tree: Path
     ):
-        _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))
-        _config = self.overlay(tmp_path, base_tree, _artifact)
+        _artifact = build_overlay_image(tmp_path, tree=make_tree(tmp_path / "overlay"))
+        _config = self.lay(tmp_path, base_tree, _artifact)
 
         assert _config.version == "2026.10.29-1"
         _slot = base_tree / SLOT.relpath
@@ -1447,20 +1439,20 @@ class TestOverlay:
         assert not (_slot / "only_in_the_base").exists(), "the slot is replaced whole"
         assert (base_tree / OTHER_SLOT.relpath / "launch.xml").exists()
 
-    def test_an_empty_set_leaves_the_base_defaults(
+    def test_an_empty_overlay_leaves_the_base_defaults(
         self, tmp_path: Path, base_tree: Path
     ):
-        _artifact = build_parameter_image(tmp_path, tree=None)
-        assert self.overlay(tmp_path, base_tree, _artifact).is_empty
+        _artifact = build_overlay_image(tmp_path, tree=None)
+        assert self.lay(tmp_path, base_tree, _artifact).is_empty
         assert (base_tree / SLOT.relpath / "only_in_the_base").exists()
 
     def test_a_base_without_the_apply_is_not_laid(
         self, tmp_path: Path, base_tree: Path
     ):
         (base_tree / APPLY[1:]).unlink()
-        _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))
-        with pytest.raises(ParameterSetNotApplicable, match="no apply"):
-            self.overlay(tmp_path, base_tree, _artifact)
+        _artifact = build_overlay_image(tmp_path, tree=make_tree(tmp_path / "overlay"))
+        with pytest.raises(OverlayNotApplicable, match="no apply"):
+            self.lay(tmp_path, base_tree, _artifact)
         assert (base_tree / SLOT.relpath / "only_in_the_base").exists()
 
     def test_a_slot_behind_a_link_is_not_followed_out_of_the_tree(
@@ -1472,79 +1464,77 @@ class TestOverlay:
         _slot = base_tree / SLOT.relpath
         shutil.rmtree(_slot)
         _slot.symlink_to(_outside / "individual_params")
-        _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))
-        with pytest.raises(ParameterSetNotApplicable, match="symbolic link"):
-            self.overlay(tmp_path, base_tree, _artifact)
+        _artifact = build_overlay_image(tmp_path, tree=make_tree(tmp_path / "overlay"))
+        with pytest.raises(OverlayNotApplicable, match="symbolic link"):
+            self.lay(tmp_path, base_tree, _artifact)
         assert (_outside / "individual_params" / "keep").read_text() == "host file\n"
 
     def test_files_the_config_lists_and_the_layer_does_not_hold(
         self, tmp_path: Path, base_tree: Path
     ):
-        _set = make_tree(tmp_path / "set")
-        _info = write_parameter_layer(_set, [SLOT], io.BytesIO())
+        _overlay = make_tree(tmp_path / "overlay")
+        _info = write_overlay_layer(_overlay, [SLOT], io.BytesIO())
         _files = [
             *_info.files,
-            ParameterSetFileEntry(
+            OverlayFileEntry(
                 path=f"{SLOT.relpath}/not_in_the_layer",
                 size=0,
                 digest=Sha256Digest(sha256(b"").hexdigest()),
             ),
         ]
-        _artifact = build_parameter_image(
-            tmp_path, tree=_set, config_update={"files": _files}
+        _artifact = build_overlay_image(
+            tmp_path, tree=_overlay, config_update={"files": _files}
         )
-        with pytest.raises(ParameterSetInvalid, match="other files"):
-            self.overlay(tmp_path, base_tree, _artifact)
+        with pytest.raises(OverlayInvalid, match="other files"):
+            self.lay(tmp_path, base_tree, _artifact)
         assert (base_tree / SLOT.relpath / "only_in_the_base").exists()
 
     def test_a_layer_that_is_not_the_configs_leaves_the_base(
         self, tmp_path: Path, base_tree: Path
     ):
-        _artifact = build_parameter_image(
+        _artifact = build_overlay_image(
             tmp_path,
-            tree=make_tree(tmp_path / "set"),
+            tree=make_tree(tmp_path / "overlay"),
             config_update={"diff_ids": [Sha256Digest("0" * 64)]},
         )
-        with pytest.raises(ParameterLayerInvalid, match="the tar is"):
-            self.overlay(tmp_path, base_tree, _artifact)
+        with pytest.raises(OverlayLayerInvalid, match="the tar is"):
+            self.lay(tmp_path, base_tree, _artifact)
         assert (base_tree / SLOT.relpath / "only_in_the_base").exists()
 
     def test_a_config_that_is_not_the_manifests_is_refused(self, tmp_path: Path):
-        """A set that fills a slot, with the empty descriptor for its layer."""
-        _artifact = build_parameter_image(
+        """An overlay that fills a slot, with the empty descriptor for its layer."""
+        _artifact = build_overlay_image(
             tmp_path,
             tree=None,
             config_update={"slots": [SLOT], "diff_ids": [Sha256Digest("0" * 64)]},
         )
-        with pytest.raises(ParameterSetInvalid, match="empty"):
-            open_parameter_set(_artifact, IMAGE_ID)
+        with pytest.raises(OverlayInvalid, match="empty"):
+            open_overlay(_artifact, IMAGE_ID)
 
     def test_an_index_entry_naming_another_version_is_refused(self, tmp_path: Path):
-        _artifact = build_parameter_image(
+        _artifact = build_overlay_image(
             tmp_path,
             tree=None,
-            index_annotations={**MANIFEST_ANNOTATIONS, PARAMETER_SET_VERSION: "0"},
+            index_annotations={**MANIFEST_ANNOTATIONS, OVERLAY_VERSION: "0"},
         )
-        with pytest.raises(ParameterSetInvalid, match="version"):
-            open_parameter_set(_artifact, IMAGE_ID)
+        with pytest.raises(OverlayInvalid, match="version"):
+            open_overlay(_artifact, IMAGE_ID)
 
-    def test_the_parameter_image_is_checked_without_a_base(self, tmp_path: Path):
-        _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))
-        assert open_parameter_set(_artifact, IMAGE_ID).slot(SLOT.name) == SLOT
-        with pytest.raises(ParameterSetNotApplicable, match="no parameter set"):
-            open_parameter_set(
-                _artifact, ImageIdentifier("perception", OTAReleaseKey.dev)
-            )
-        with pytest.raises(ParameterSetInvalid, match="cannot open"):
-            open_parameter_set(tmp_path / "missing.zip", IMAGE_ID)
+    def test_the_overlay_image_is_checked_without_a_base(self, tmp_path: Path):
+        _artifact = build_overlay_image(tmp_path, tree=make_tree(tmp_path / "overlay"))
+        assert open_overlay(_artifact, IMAGE_ID).slot(SLOT.name) == SLOT
+        with pytest.raises(OverlayNotApplicable, match="no overlay"):
+            open_overlay(_artifact, ImageIdentifier("perception", OTAReleaseKey.dev))
+        with pytest.raises(OverlayInvalid, match="cannot open"):
+            open_overlay(tmp_path / "missing.zip", IMAGE_ID)
         (tmp_path / "not_a_zip").write_text("x")
-        with pytest.raises(ParameterSetInvalid, match="cannot open"):
-            open_parameter_set(tmp_path / "not_a_zip", IMAGE_ID)
+        with pytest.raises(OverlayInvalid, match="cannot open"):
+            open_overlay(tmp_path / "not_a_zip", IMAGE_ID)
 
-    def test_lookup_image_shows_the_set_config(
+    def test_lookup_image_shows_the_overlay_config(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ):
-        _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))
+        _artifact = build_overlay_image(tmp_path, tree=make_tree(tmp_path / "overlay"))
         _lookup_image_from_artifact(
             image_root=_artifact, image_id=IMAGE_ID, show_image_config=True
         )
@@ -1553,14 +1543,14 @@ class TestOverlay:
         assert _shown["version"] == "2026.10.29-1"
 
     def test_list_image_names_the_kind(self, tmp_path: Path):
-        _artifact = build_parameter_image(tmp_path, tree=None)
+        _artifact = build_overlay_image(tmp_path, tree=None)
         _listed = _list_image_from_artifact(_artifact)
-        assert "kind='parameter-set'" in _render_output(_listed)
+        assert "kind='overlay'" in _render_output(_listed)
 
-    def test_another_ecu_has_no_set_here(self, tmp_path: Path, base_tree: Path):
-        _artifact = build_parameter_image(tmp_path, tree=make_tree(tmp_path / "set"))
-        with pytest.raises(ParameterSetNotApplicable, match="no parameter set"):
-            self.overlay(
+    def test_another_ecu_has_no_overlay_here(self, tmp_path: Path, base_tree: Path):
+        _artifact = build_overlay_image(tmp_path, tree=make_tree(tmp_path / "overlay"))
+        with pytest.raises(OverlayNotApplicable, match="no overlay"):
+            self.lay(
                 tmp_path,
                 base_tree,
                 _artifact,

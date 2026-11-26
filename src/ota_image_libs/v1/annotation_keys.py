@@ -68,9 +68,9 @@ PARTITION_IMAGE_VENDOR_PACKAGE_FORMAT = (
 PARTITION_IMAGE_FIRMWARE_FORMAT = "vnd.tier4.ota.partition-image.firmware.format"
 
 #
-# ------ parameter set related ------ #
+# ------ overlay related ------ #
 #
-PARAMETER_SET_VERSION = "vnd.tier4.ota.parameter-set.version"
+OVERLAY_VERSION = "vnd.tier4.ota.overlay.version"
 
 #
 # ------ special hardware related ------ #

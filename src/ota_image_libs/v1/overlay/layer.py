@@ -11,17 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""The layer of a parameter set: writing it from a tree, and reading it back.
+"""The layer of an overlay: writing it from a tree, and reading it back.
 
-The layer is an OCI image layer (tar, zstd-compressed) holding, for each slot the set
-fills, the slot's directory, an opaque whiteout in it (`.wh..wh..opq`: the directory
-replaces the base's), and the regular files and directories below it. Nothing else:
-no link, no device, no other whiteout, nothing outside a slot, nothing after the end
-of the archive but its zero padding.
+The layer is an OCI image layer (tar, zstd-compressed) holding, for each slot the
+overlay fills, the slot's directory, an opaque whiteout in it (`.wh..wh..opq`: the
+directory replaces the base's), and the regular files and directories below it.
+Nothing else: no link, no device, no other whiteout, nothing outside a slot, nothing
+after the end of the archive but its zero padding.
 
 Both directions are here so that the format has one owner: the builder writes with
-`write_parameter_layer`, and a consumer validates (and unpacks) with
-`read_parameter_layer`, which refuses anything the writer would not have written.
+`write_overlay_layer`, and a consumer validates (and unpacks) with
+`read_overlay_layer`, which refuses anything the writer would not have written.
 """
 
 from __future__ import annotations
@@ -41,8 +41,8 @@ import zstandard
 
 from ota_image_libs.common.oci_spec import Sha256Digest
 
-from .schema import ParameterSetFileEntry
-from .slots import WHITEOUT_PREFIX, ParameterSlotRef, slot_of
+from .schema import OverlayFileEntry
+from .slots import WHITEOUT_PREFIX, OverlaySlotRef, slot_of
 
 OPAQUE_WHITEOUT = ".wh..wh..opq"
 """In a slot's directory: the directory replaces the base's (OCI image layer spec)."""
@@ -60,12 +60,12 @@ _DIR_MODE = 0o755
 _OPAQUE_MODE = 0o644
 
 
-class ParameterLayerInvalid(Exception):
-    """The layer holds something a parameter set does not."""
+class OverlayLayerInvalid(Exception):
+    """The layer holds something an overlay does not."""
 
 
 @dataclass
-class ParameterLayerInfo:
+class OverlayLayerInfo:
     """What a layer holds, as written or as read."""
 
     digest: Sha256Digest | None = None
@@ -73,8 +73,8 @@ class ParameterLayerInfo:
     size: int = 0
     """Of the compressed blob; known to the writer only."""
     diff_id: Sha256Digest | None = None
-    """Of the uncompressed tar: what the set's config lists in `diff_ids`."""
-    files: list[ParameterSetFileEntry] = field(default_factory=list)
+    """Of the uncompressed tar: what the overlay's config lists in `diff_ids`."""
+    files: list[OverlayFileEntry] = field(default_factory=list)
     files_size: int = 0
 
 
@@ -122,11 +122,11 @@ class _HashingReader(io.RawIOBase):
         return _n
 
     def drain_hashing(self, *, up_to: int | None = None) -> None:
-        """Read the rest; ParameterLayerInvalid when it goes past `up_to` bytes."""
+        """Read the rest; OverlayLayerInvalid when it goes past `up_to` bytes."""
         while _data := self._source.read(READ_SIZE):
             self._account(_data)
             if up_to is not None and self.size > up_to:
-                raise ParameterLayerInvalid(
+                raise OverlayLayerInvalid(
                     f"more than {MAX_TAR_TRAILER} bytes after the last member"
                 )
 
@@ -144,9 +144,9 @@ def _tarinfo(name: str, *, type_: bytes, mode: int, size: int = 0) -> tarfile.Ta
     return _ti
 
 
-def write_parameter_layer(
-    root: Path, slots: Sequence[ParameterSlotRef], out: BinaryIO
-) -> ParameterLayerInfo:
+def write_overlay_layer(
+    root: Path, slots: Sequence[OverlaySlotRef], out: BinaryIO
+) -> OverlayLayerInfo:
     """Write the layer of `slots` from the tree at `root` to `out`.
 
     Each slot's directory under `root` must exist and hold only regular files and
@@ -154,7 +154,7 @@ def write_parameter_layer(
     permission bits are kept (setuid, setgid and sticky are refused), so the layer
     depends on the tree's contents alone.
     """
-    _info = ParameterLayerInfo()
+    _info = OverlayLayerInfo()
     _compressed = _HashingWriter(out)
     _compressor = zstandard.ZstdCompressor(level=ZSTD_LEVEL)
     with _compressor.stream_writer(_compressed, closefd=False) as _zstd:  # type: ignore[arg-type]
@@ -169,20 +169,18 @@ def write_parameter_layer(
 
 
 def _write_slot(
-    tar: tarfile.TarFile, root: Path, slot: ParameterSlotRef, info: ParameterLayerInfo
+    tar: tarfile.TarFile, root: Path, slot: OverlaySlotRef, info: OverlayLayerInfo
 ) -> None:
     _slot_dir = root / slot.relpath
     if os.path.realpath(_slot_dir) != os.path.join(
         os.path.realpath(root), slot.relpath
     ):
-        raise ParameterLayerInvalid(
+        raise OverlayLayerInvalid(
             f"slot {slot.name!r}: {_slot_dir} is behind a symbolic link"
         )
     _st = os.lstat(_slot_dir)
     if not stat.S_ISDIR(_st.st_mode):
-        raise ParameterLayerInvalid(
-            f"slot {slot.name!r}: {_slot_dir} is not a directory"
-        )
+        raise OverlayLayerInvalid(f"slot {slot.name!r}: {_slot_dir} is not a directory")
     tar.addfile(
         _tarinfo(slot.relpath, type_=tarfile.DIRTYPE, mode=_perm(_st, _slot_dir))
     )
@@ -201,7 +199,7 @@ def _write_slot(
         _rel_dir = slot.relpath if _rel_part == "." else f"{slot.relpath}/{_rel_part}"
         for _name in sorted([*_dirnames, *_filenames]):
             if _name.startswith(WHITEOUT_PREFIX):
-                raise ParameterLayerInvalid(
+                raise OverlayLayerInvalid(
                     f"{_dirpath}/{_name}: a name starting with {WHITEOUT_PREFIX!r} "
                     "would be read as a whiteout"
                 )
@@ -220,7 +218,7 @@ def _write_slot(
                 with open(_src, "rb") as _f:
                     tar.addfile(_ti, _HashedFile(_f, _hash))
                 info.files.append(
-                    ParameterSetFileEntry(
+                    OverlayFileEntry(
                         path=_rel,
                         size=_st.st_size,
                         digest=Sha256Digest(_hash.hexdigest()),
@@ -228,14 +226,14 @@ def _write_slot(
                 )
                 info.files_size += _st.st_size
             else:
-                raise ParameterLayerInvalid(
-                    f"{_src}: only regular files and directories go into a parameter set"
+                raise OverlayLayerInvalid(
+                    f"{_src}: only regular files and directories go into an overlay"
                 )
 
 
 def _raise_unreadable(e: OSError) -> None:
     # os.walk skips a directory it cannot list: its files would be left out silently
-    raise ParameterLayerInvalid(f"cannot read {e.filename}: {e.strerror}") from e
+    raise OverlayLayerInvalid(f"cannot read {e.filename}: {e.strerror}") from e
 
 
 class _HashedFile:
@@ -254,8 +252,8 @@ class _HashedFile:
 def _perm(st: os.stat_result, path: Path) -> int:
     _mode = stat.S_IMODE(st.st_mode)
     if _mode & (stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX):
-        raise ParameterLayerInvalid(
-            f"{path}: setuid, setgid and sticky bits do not go into a parameter set"
+        raise OverlayLayerInvalid(
+            f"{path}: setuid, setgid and sticky bits do not go into an overlay"
         )
     return _mode
 
@@ -277,21 +275,21 @@ def _member_path(member: tarfile.TarInfo) -> str:
         or _name.split("/")[0] == ".."
         or "\0" in _name
     ):
-        raise ParameterLayerInvalid(f"member {member.name!r} is not a normalized path")
+        raise OverlayLayerInvalid(f"member {member.name!r} is not a normalized path")
     return _name
 
 
-def read_parameter_layer(
+def read_overlay_layer(
     blob: BinaryIO,
-    slots: Sequence[ParameterSlotRef],
+    slots: Sequence[OverlaySlotRef],
     *,
     extract_to: Path | None = None,
     max_size: int | None = None,
     blob_digest: Sha256Digest | None = None,
     diff_id: Sha256Digest | None = None,
-) -> ParameterLayerInfo:
-    """Validate the layer read from `blob` (compressed) against the set's `slots`, and
-    unpack it under `extract_to` when given.
+) -> OverlayLayerInfo:
+    """Validate the layer read from `blob` (compressed) against the overlay's
+    `slots`, and unpack it under `extract_to` when given.
 
     Every member must be a slot's directory, the opaque whiteout directly in it, or a
     regular file or directory below it, and every slot must have its directory and its
@@ -306,12 +304,12 @@ def read_parameter_layer(
     `blob_digest` and `diff_id`, when given, are checked against the compressed blob
     and the uncompressed tar once read; what was unpacked before a mismatch is found
     is the caller's to discard. Returns what the layer holds, with its `diff_id`.
-    Raises ParameterLayerInvalid; OSError when unpacking fails, ValueError when
+    Raises OverlayLayerInvalid; OSError when unpacking fails, ValueError when
     `extract_to` is not empty.
     """
     if extract_to is not None and extract_to.exists() and any(extract_to.iterdir()):
         raise ValueError(f"{extract_to} is not empty")
-    _info = ParameterLayerInfo()
+    _info = OverlayLayerInfo()
     _seen: set[str] = set()
     _dirs: set[str] = set()
     _opaque: set[str] = set()
@@ -327,19 +325,17 @@ def read_parameter_layer(
             for _member in _tar:
                 _path = _member_path(_member)
                 if _path in _seen:
-                    raise ParameterLayerInvalid(f"{_path!r} appears twice")
+                    raise OverlayLayerInvalid(f"{_path!r} appears twice")
                 _seen.add(_path)
                 _slot = slot_of(_path, slots)
                 if _slot is None:
-                    raise ParameterLayerInvalid(
-                        f"{_path!r} is not in one of the set's slots"
+                    raise OverlayLayerInvalid(
+                        f"{_path!r} is not in one of the overlay's slots"
                     )
                 _name = posixpath.basename(_path)
                 _parent = posixpath.dirname(_path)
                 if _member.mode & (stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX):
-                    raise ParameterLayerInvalid(
-                        f"{_path!r} has setuid, setgid or sticky"
-                    )
+                    raise OverlayLayerInvalid(f"{_path!r} has setuid, setgid or sticky")
                 if _name.startswith(WHITEOUT_PREFIX):
                     if not (
                         _name == OPAQUE_WHITEOUT
@@ -348,14 +344,14 @@ def read_parameter_layer(
                         and not _member.issparse()
                         and _member.size == 0
                     ):
-                        raise ParameterLayerInvalid(
+                        raise OverlayLayerInvalid(
                             f"{_path!r}: the only whiteout is the empty opaque one "
                             "directly in a slot's directory"
                         )
                     _opaque.add(_slot.name)
                     continue
                 if _path != _slot.relpath and _parent not in _dirs:
-                    raise ParameterLayerInvalid(f"{_path!r} comes before its directory")
+                    raise OverlayLayerInvalid(f"{_path!r} comes before its directory")
                 if _member.isdir():
                     _dirs.add(_path)
                     if extract_to is not None:
@@ -363,14 +359,12 @@ def read_parameter_layer(
                         _dir_modes.append((_path, stat.S_IMODE(_member.mode)))
                 elif _member.isreg() and not _member.issparse():
                     if _path == _slot.relpath:
-                        raise ParameterLayerInvalid(
+                        raise OverlayLayerInvalid(
                             f"slot {_slot.name!r} is not a directory"
                         )
                     _info.files_size += _member.size
                     if max_size is not None and _info.files_size > max_size:
-                        raise ParameterLayerInvalid(
-                            f"the files exceed {max_size} bytes"
-                        )
+                        raise OverlayLayerInvalid(f"the files exceed {max_size} bytes")
                     _hash = sha256()
                     _src = _tar.extractfile(_member)
                     assert _src is not None
@@ -378,16 +372,16 @@ def read_parameter_layer(
                         extract_to, _path, stat.S_IMODE(_member.mode), _src, _hash
                     )
                     _info.files.append(
-                        ParameterSetFileEntry(
+                        OverlayFileEntry(
                             path=_path,
                             size=_member.size,
                             digest=Sha256Digest(_hash.hexdigest()),
                         )
                     )
                 else:
-                    raise ParameterLayerInvalid(
+                    raise OverlayLayerInvalid(
                         f"{_path!r}: only regular files and directories go into a "
-                        "parameter set"
+                        "overlay"
                     )
             # where the end-of-archive marker starts: tarfile stops at the first zero
             #   block, and also, quietly, at a header it cannot read past the first
@@ -396,25 +390,25 @@ def read_parameter_layer(
         _tar_in.drain_hashing(up_to=_end + MAX_TAR_TRAILER)
         _blob_in.drain_hashing()
     except (tarfile.TarError, zstandard.ZstdError, EOFError) as e:
-        raise ParameterLayerInvalid(f"not a zstd-compressed tar: {e}") from e
+        raise OverlayLayerInvalid(f"not a zstd-compressed tar: {e}") from e
     if _tar_in.nonzero_end > _end:
-        raise ParameterLayerInvalid(
+        raise OverlayLayerInvalid(
             "there is more than zero padding after the last member"
         )
     if _tar_in.size - _end < 2 * tarfile.BLOCKSIZE:
-        raise ParameterLayerInvalid("the tar ends without its end-of-archive marker")
+        raise OverlayLayerInvalid("the tar ends without its end-of-archive marker")
 
     for _slot in slots:
         if _slot.relpath not in _dirs or _slot.name not in _opaque:
-            raise ParameterLayerInvalid(
+            raise OverlayLayerInvalid(
                 f"slot {_slot.name!r} lacks its directory or its opaque whiteout"
             )
     _info.diff_id = Sha256Digest(_tar_in.hash.hexdigest())
     if diff_id is not None and _info.diff_id != diff_id:
-        raise ParameterLayerInvalid(f"the tar is {_info.diff_id}, not {diff_id}")
+        raise OverlayLayerInvalid(f"the tar is {_info.diff_id}, not {diff_id}")
     _digest = Sha256Digest(_blob_in.hash.hexdigest())
     if blob_digest is not None and _digest != blob_digest:
-        raise ParameterLayerInvalid(f"the blob is {_digest}, not {blob_digest}")
+        raise OverlayLayerInvalid(f"the blob is {_digest}, not {blob_digest}")
     if extract_to is not None:
         # deepest first: a directory without write permission is filled already
         for _path, _mode in reversed(_dir_modes):
@@ -426,7 +420,7 @@ def _mkdir(root: Path, path: str) -> None:
     _dst = root / path
     _dst.mkdir(mode=_DIR_MODE, parents=True, exist_ok=True)
     if _dst.is_symlink() or not _dst.is_dir():
-        raise ParameterLayerInvalid(f"{_dst} is not a directory")
+        raise OverlayLayerInvalid(f"{_dst} is not a directory")
 
 
 def _write_all(fd: int, data: bytes) -> None:

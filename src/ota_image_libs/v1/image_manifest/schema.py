@@ -90,7 +90,7 @@ class PayloadManifestDescriptor(
     ImageIDMixin, MetaFileDescriptor[MetaFile_T], Generic[MetaFile_T]
 ):
     """The index entry of an image payload, of any kind: file-based, partition-based,
-    or a parameter set.
+    or an overlay.
 
     Its annotations identify the payload, so they are required.
     """

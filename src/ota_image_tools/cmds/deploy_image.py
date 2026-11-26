@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from ota_image_libs.v1.artifact.reader import OTAImageArtifactReader
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier
-from ota_image_libs.v1.parameter_set.layer import ParameterLayerInvalid
+from ota_image_libs.v1.overlay.layer import OverlayLayerInvalid
 from ota_image_tools._utils import (
     exit_with_err_msg,
     measure_timecost,
@@ -36,11 +36,11 @@ from ota_image_tools.libs.deploy_image import (
     ResourcesDeployer,
     RootfsDeployer,
 )
-from ota_image_tools.libs.deploy_parameter_set import (
-    ParameterSetInvalid,
-    ParameterSetNotApplicable,
-    open_parameter_set,
-    overlay_parameter_set,
+from ota_image_tools.libs.deploy_overlay import (
+    OverlayInvalid,
+    OverlayNotApplicable,
+    lay_overlay,
+    open_overlay,
 )
 
 if TYPE_CHECKING:
@@ -116,8 +116,8 @@ def deploy_image_cmd_args(
         default=READ_SIZE,
     )
     deploy_image_arg_parser.add_argument(
-        "--parameter-image",
-        help="A parameter image artifact whose parameter set for the same ECU ID and "
+        "--overlay-image",
+        help="An overlay image artifact whose overlay for the same ECU ID and "
         "release key is laid over the deployed rootfs, as a device applies it.",
     )
     deploy_image_arg_parser.set_defaults(handler=measure_timecost(deploy_image_cmd))
@@ -130,18 +130,18 @@ def deploy_image_cmd(args: Namespace) -> None:  # pragma: no cover
         exit_with_err_msg(f"input image file {image} not found!")
     image_id = ImageIdentifier(ecu_id=args.ecu_id, release_key=args.release_key)
 
-    parameter_image = None
-    if args.parameter_image:
+    overlay_image = None
+    if args.overlay_image:
         # what can be told without the base, before spending the time to deploy it
-        parameter_image = Path(args.parameter_image)
-        if not parameter_image.is_file():
-            exit_with_err_msg(f"parameter image file {parameter_image} not found!")
+        overlay_image = Path(args.overlay_image)
+        if not overlay_image.is_file():
+            exit_with_err_msg(f"overlay image file {overlay_image} not found!")
         try:
-            _set_config = open_parameter_set(parameter_image, image_id)
-        except (ParameterSetNotApplicable, ParameterSetInvalid) as e:
-            exit_with_err_msg(f"cannot use the parameter image: {e}")
+            _overlay_config = open_overlay(overlay_image, image_id)
+        except (OverlayNotApplicable, OverlayInvalid) as e:
+            exit_with_err_msg(f"cannot use the overlay image: {e}")
         logger.info(
-            f"will lay parameter set {_set_config.name} {_set_config.version} over "
+            f"will lay overlay {_overlay_config.name} {_overlay_config.version} over "
             "the deployed rootfs"
         )
 
@@ -225,21 +225,21 @@ def deploy_image_cmd(args: Namespace) -> None:  # pragma: no cover
 
         logger.info(f"finish deploying system image with {image_id=} to {rootfs_dir=}!")
 
-        if parameter_image:
+        if overlay_image:
             try:
-                _set_config = overlay_parameter_set(
+                _overlay_config = lay_overlay(
                     rootfs_dir=rootfs_dir,
-                    parameter_image=parameter_image,
+                    overlay_image=overlay_image,
                     image_id=image_id,
                     tmp_dir=tmpdir,
                 )
             except (
-                ParameterSetNotApplicable,
-                ParameterSetInvalid,
-                ParameterLayerInvalid,
+                OverlayNotApplicable,
+                OverlayInvalid,
+                OverlayLayerInvalid,
             ) as e:
-                exit_with_err_msg(f"cannot lay the parameter set over the rootfs: {e}")
+                exit_with_err_msg(f"cannot lay the overlay over the rootfs: {e}")
             logger.info(
-                f"parameter set {_set_config.name} {_set_config.version} laid over "
+                f"overlay {_overlay_config.name} {_overlay_config.version} laid over "
                 f"{rootfs_dir=}"
             )

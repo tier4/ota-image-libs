@@ -151,11 +151,11 @@ Annotations on the blob descriptors of a [partition-based payload](partition_ima
 
   REQUIRED on a partition delta blob. How many bytes of the source the delta applies to.
 
-## Parameter Set Annotations
+## Overlay Annotations
 
-- **`vnd.tier4.ota.parameter-set.version`** *string*
+- **`vnd.tier4.ota.overlay.version`** *string*
 
-  REQUIRED on a [parameter set](parameter_set.md)'s image manifest, OPTIONAL on its descriptor in the image index. The set's version, the same as its config's `version`.
+  REQUIRED on an [overlay](overlay.md)'s image manifest, OPTIONAL on its descriptor in the image index. The overlay's version, the same as its config's `version`.
 
 ## Update Agent Release Package Annotations
 
