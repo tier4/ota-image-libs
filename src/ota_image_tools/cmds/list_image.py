@@ -25,7 +25,7 @@ from ota_image_libs.v1.image_index.schema import (
     ImagePayloadDescriptor,
 )
 from ota_image_libs.v1.image_index.utils import ImageIndexHelper
-from ota_image_libs.v1.parameter_set.schema import ParameterSetManifest
+from ota_image_libs.v1.overlay.schema import OverlayManifest
 from ota_image_libs.v1.partition_image.schema import PartitionImageManifest
 from ota_image_libs.v1.utils import check_if_valid_ota_image
 from ota_image_tools._utils import exit_with_err_msg
@@ -83,8 +83,8 @@ _DIV = "-" * 18
 def _payload_kind(_entry: ImagePayloadDescriptor) -> str:
     if isinstance(_entry, PartitionImageManifest.Descriptor):
         return "partition-based"
-    if isinstance(_entry, ParameterSetManifest.Descriptor):
-        return "parameter-set"
+    if isinstance(_entry, OverlayManifest.Descriptor):
+        return "overlay"
     return "file-based"
 
 

@@ -11,13 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Schemas of the parameter set: the files of a few directories of the rootfs (its
-slots), delivered in an OTA image of their own and laid over the running base instead
-of written into a standby slot.
+"""Schemas of the overlay: the files of a few directories of the rootfs (its slots),
+delivered in an OTA image of their own and laid over the running base instead of
+written into a standby slot.
 
-One OCI layer (tar+zstd) of the slots' directories, for one ECU. The set names its
-slots and how a change to each takes effect; it names no base: which base it suits is
-decided where the release is evaluated. Specification: spec/parameter_set.md.
+One OCI layer (tar+zstd) of the slots' directories, for one ECU. The overlay names
+its slots and how a change to each takes effect; it names no base: which base it
+suits is decided where the release is evaluated. Specification: spec/overlay.md.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ from ota_image_libs.common.model_spec import ArtifactType
 from ota_image_libs.common.oci_spec import Sha256Digest
 from ota_image_libs.v1.annotation_keys import (
     OTA_RELEASE_KEY,
-    PARAMETER_SET_VERSION,
+    OVERLAY_VERSION,
     PLATFORM_ECU,
 )
 from ota_image_libs.v1.image_manifest.schema import (
@@ -55,21 +55,21 @@ from ota_image_libs.v1.image_manifest.schema import (
 from ota_image_libs.v1.media_types import (
     IMAGE_MANIFEST,
     OCI_LAYER_TAR_ZSTD,
-    PARAMETER_SET_ARTIFACT,
-    PARAMETER_SET_CONFIG_JSON,
+    OVERLAY_ARTIFACT,
+    OVERLAY_CONFIG_JSON,
 )
 from ota_image_libs.v1.update_agent_package.schema import EmptyConfigDescriptor
 
 from .slots import (
     SLOT_NAME,
-    ParameterSlot,
-    apply_comes_with_set,
+    OverlaySlot,
+    apply_comes_with_overlay,
     check_slots,
     slot_of,
 )
 
 VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}")
-"""A set's version: reported as it is, so nothing that would need escaping."""
+"""An overlay's version: reported as it is, so nothing that would need escaping."""
 
 
 #
@@ -77,14 +77,14 @@ VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}")
 #
 
 
-class ParameterLayerDescriptor(OCIDescriptor):
-    """The set's files: one OCI layer, a zstd-compressed tar (see layer.py)."""
+class OverlayLayerDescriptor(OCIDescriptor):
+    """The overlay's files: one OCI layer, a zstd-compressed tar (see layer.py)."""
 
     MediaType = MediaType[OCI_LAYER_TAR_ZSTD]
 
 
 EmptyDescriptor = EmptyConfigDescriptor
-"""The OCI empty descriptor: the one layer of an empty set."""
+"""The OCI empty descriptor: the one layer of an empty overlay."""
 
 
 #
@@ -92,45 +92,45 @@ EmptyDescriptor = EmptyConfigDescriptor
 #
 
 
-class ParameterSetFileEntry(AliasEnabledModel):
-    """One regular file of the set, as the layer carries it."""
+class OverlayFileEntry(AliasEnabledModel):
+    """One regular file of the overlay, as the layer carries it."""
 
     path: str
-    """Relative to `/`, under one of the set's slots."""
+    """Relative to `/`, under one of the overlay's slots."""
     size: int = Field(ge=0)
     digest: Sha256Digest
 
 
-class ParameterSetConfig(MetaFileBase):
-    """What a parameter set is: its name and version, the slots it fills with how a
+class OverlayConfig(MetaFileBase):
+    """What an overlay is: its name and version, the slots it fills with how a
     change to each takes effect, and the uncompressed digest of its layer."""
 
-    class Descriptor(MetaFileDescriptor["ParameterSetConfig"]):
-        MediaType = MediaType[PARAMETER_SET_CONFIG_JSON]
+    class Descriptor(MetaFileDescriptor["OverlayConfig"]):
+        MediaType = MediaType[OVERLAY_CONFIG_JSON]
 
     SchemaVersion = SchemaVersion[1]
-    MediaType = MediaType[PARAMETER_SET_CONFIG_JSON]
+    MediaType = MediaType[OVERLAY_CONFIG_JSON]
 
     name: str
     version: str
     description: str | None = None
     created: str | None = None
-    slots: list[ParameterSlot] = Field(default_factory=list)
+    slots: list[OverlaySlot] = Field(default_factory=list)
     diff_ids: list[Sha256Digest] = Field(default_factory=list)
-    files: list[ParameterSetFileEntry] | None = None
+    files: list[OverlayFileEntry] | None = None
     """The layer's regular files; None when the config does not list them."""
 
     @model_validator(mode="after")
     def _well_formed(self) -> Self:
         if not SLOT_NAME.fullmatch(self.name):
-            raise ValueError(f"set name {self.name!r} is not a valid name")
+            raise ValueError(f"overlay name {self.name!r} is not a valid name")
         if not VERSION.fullmatch(self.version):
-            raise ValueError(f"set version {self.version!r} is not a valid version")
-        check_slots("parameter set", self.slots)
+            raise ValueError(f"overlay version {self.version!r} is not a valid version")
+        check_slots("overlay", self.slots)
         _layers = 1 if self.slots else 0
         if len(self.diff_ids) != _layers:
             raise ValueError(
-                f"a set with {len(self.slots)} slot(s) has {_layers} diff_id(s), "
+                f"an overlay with {len(self.slots)} slot(s) has {_layers} diff_id(s), "
                 f"not {len(self.diff_ids)}"
             )
         _seen: set[str] = set()
@@ -141,37 +141,39 @@ class ParameterSetConfig(MetaFileBase):
                 or slot_of(_f.path, self.slots) is None
             ):
                 raise ValueError(
-                    f"file {_f.path!r} is not under one of the set's slots"
+                    f"file {_f.path!r} is not under one of the overlay's slots"
                 )
             if _f.path in _seen:
                 raise ValueError(f"file {_f.path!r} is listed twice")
             _seen.add(_f.path)
         if self.files is not None:
-            # what the consumer runs is a file of the set: told before the layer is read
+            # what the consumer runs is a file of the overlay: told before the layer is
+            #   read
             for _slot in self.slots:
                 if (
-                    apply_comes_with_set(_slot, self.slots)
+                    apply_comes_with_overlay(_slot, self.slots)
                     and _slot.apply[1:] not in _seen
                 ):
                     raise ValueError(
-                        f"slot {_slot.name!r}'s apply {_slot.apply} is in the set's "
-                        "slots, but not among its files"
+                        f"slot {_slot.name!r}'s apply {_slot.apply} is in the "
+                        "overlay's slots, but not among its files"
                     )
         return self
 
     @property
     def is_empty(self) -> bool:
-        """An empty set fills no slot: applied, every slot holds the base's defaults."""
+        """An empty overlay fills no slot: applied, every slot holds the base's
+        defaults."""
         return not self.slots
 
-    def slot(self, name: str) -> ParameterSlot | None:
+    def slot(self, name: str) -> OverlaySlot | None:
         for _s in self.slots:
             if _s.name == name:
                 return _s
         return None
 
-    def check_files(self, files: Iterable[ParameterSetFileEntry]) -> None:
-        """The layer's regular files (as `read_parameter_layer` returns them) are
+    def check_files(self, files: Iterable[OverlayFileEntry]) -> None:
+        """The layer's regular files (as `read_overlay_layer` returns them) are
         exactly the ones the config lists, by path, size and digest, when it lists
         them. Raises ValueError otherwise."""
         if self.files is None:
@@ -191,37 +193,37 @@ class ParameterSetConfig(MetaFileBase):
 #
 
 
-class ParameterSetManifest(ImageIDMixin, MetaFileBase):
-    """The OCI image manifest of a parameter set: the payload of an ECU in a parameter
+class OverlayManifest(ImageIDMixin, MetaFileBase):
+    """The OCI image manifest of an overlay: the payload of an ECU in an overlay
     image, told apart from a base payload by its artifactType."""
 
     # fmt: off
-    class Descriptor(PayloadManifestDescriptor["ParameterSetManifest"]):
+    class Descriptor(PayloadManifestDescriptor["OverlayManifest"]):
         class Annotations(ImageManifest.Descriptor.Annotations):
-            parameter_set_version: str | None = Field(alias=PARAMETER_SET_VERSION, default=None)
+            overlay_version: str | None = Field(alias=OVERLAY_VERSION, default=None)
 
         MediaType = MediaType[IMAGE_MANIFEST]
-        ArtifactType = ArtifactType[PARAMETER_SET_ARTIFACT]
+        ArtifactType = ArtifactType[OVERLAY_ARTIFACT]
 
         annotations: Annotations = Field(...)
 
         @model_validator(mode="before")
         @classmethod
         def _artifact_type_present(cls, data: Any, info: ValidationInfo) -> Any:
-            return require_artifact_type("a parameter set's descriptor", data, info)
+            return require_artifact_type("an overlay's descriptor", data, info)
 
     class Annotations(AliasEnabledModel):
         pilot_auto_platform_ecu: str = Field(alias=PLATFORM_ECU)
         ota_release_key: OTAReleaseKey = Field(alias=OTA_RELEASE_KEY, default=OTAReleaseKey.dev)
-        parameter_set_version: str = Field(alias=PARAMETER_SET_VERSION)
+        overlay_version: str = Field(alias=OVERLAY_VERSION)
     # fmt: on
 
     SchemaVersion = SchemaVersion[2]
     MediaType = MediaType[IMAGE_MANIFEST]
-    ArtifactType = ArtifactType[PARAMETER_SET_ARTIFACT]
+    ArtifactType = ArtifactType[OVERLAY_ARTIFACT]
 
-    config: ParameterSetConfig.Descriptor
-    layers: list[ParameterLayerDescriptor | EmptyDescriptor]
+    config: OverlayConfig.Descriptor
+    layers: list[OverlayLayerDescriptor | EmptyDescriptor]
     annotations: Annotations
 
     @computed_field
@@ -233,24 +235,24 @@ class ParameterSetManifest(ImageIDMixin, MetaFileBase):
     def _one_layer(self) -> Self:
         if len(self.layers) != 1:
             raise ValueError(
-                "a parameter set carries exactly one layer: its tar+zstd, or the empty "
-                f"descriptor for an empty set; got {len(self.layers)}"
+                "an overlay carries exactly one layer: its tar+zstd, or the empty "
+                f"descriptor for an empty overlay; got {len(self.layers)}"
             )
         return self
 
     @property
-    def layer(self) -> ParameterLayerDescriptor | None:
-        """The set's layer, or None for an empty set."""
+    def layer(self) -> OverlayLayerDescriptor | None:
+        """The overlay's layer, or None for an empty overlay."""
         _layer = self.layers[0]
-        return _layer if isinstance(_layer, ParameterLayerDescriptor) else None
+        return _layer if isinstance(_layer, OverlayLayerDescriptor) else None
 
     @property
     def version(self) -> str:
-        return self.annotations.parameter_set_version
+        return self.annotations.overlay_version
 
-    def check_config(self, config: ParameterSetConfig) -> None:
+    def check_config(self, config: OverlayConfig) -> None:
         """The config agrees with the manifest: the same version, and a layer exactly
-        when the set fills a slot. Raises ValueError otherwise."""
+        when the overlay fills a slot. Raises ValueError otherwise."""
         if config.version != self.version:
             raise ValueError(
                 f"the config says version {config.version!r}, the manifest "
@@ -258,6 +260,6 @@ class ParameterSetManifest(ImageIDMixin, MetaFileBase):
             )
         if config.is_empty != (self.layer is None):
             raise ValueError(
-                "an empty set carries the empty descriptor and a set that fills a "
-                "slot carries its layer"
+                "an empty overlay carries the empty descriptor and an overlay that "
+                "fills a slot carries its layer"
             )

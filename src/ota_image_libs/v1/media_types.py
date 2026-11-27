@@ -54,10 +54,10 @@ PARTITION_IMAGE_FIRMWARE_PACKAGE = "application/vnd.tier4.ota.partition-based-ot
 PARTITION_IMAGE_FIRMWARE_PACKAGE_ZSTD = "application/vnd.tier4.ota.partition-based-ota-image.firmware-package.v1+zstd"
 
 #
-# ------ parameter set media types (spec/parameter_set.md) ------ #
+# ------ overlay media types (spec/overlay.md) ------ #
 #
-PARAMETER_SET_ARTIFACT = "application/vnd.tier4.ota.parameter-set.v1"
-PARAMETER_SET_CONFIG_JSON = "application/vnd.tier4.ota.parameter-set.config.v1+json"
+OVERLAY_ARTIFACT = "application/vnd.tier4.ota.overlay.v1"
+OVERLAY_CONFIG_JSON = "application/vnd.tier4.ota.overlay.config.v1+json"
 
 #
 # ------ update agent release package media types (v1/update_agent_package) ------ #

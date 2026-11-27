@@ -21,7 +21,7 @@ from ota_image_libs.v1.consts import RESOURCE_DIR
 from ota_image_libs.v1.image_index.schema import ImagePayloadDescriptor
 from ota_image_libs.v1.image_index.utils import ImageIndexHelper
 from ota_image_libs.v1.image_manifest.schema import ImageIdentifier, ImageManifest
-from ota_image_libs.v1.parameter_set.schema import ParameterSetManifest
+from ota_image_libs.v1.overlay.schema import OverlayManifest
 from ota_image_libs.v1.partition_image.schema import PartitionImageManifest
 from ota_image_tools._utils import exit_with_err_msg
 
@@ -47,17 +47,17 @@ def resolve_image_from_folder(
 
 def resolve_image_from_artifact(
     artifact_reader: OTAImageArtifactReader, image_id: ImageIdentifier
-) -> ImageManifest | PartitionImageManifest | ParameterSetManifest:
+) -> ImageManifest | PartitionImageManifest | OverlayManifest:
     """Resolve the image manifest, of any payload kind, from an OTA image artifact.
 
     Returns:
-        The parsed ImageManifest, PartitionImageManifest or ParameterSetManifest.
+        The parsed ImageManifest, PartitionImageManifest or OverlayManifest.
     """
     image_index = artifact_reader.parse_index()
     image_manifest = (
         artifact_reader.select_image_payload(image_id, image_index)
         or artifact_reader.select_partition_image_payload(image_id, image_index)
-        or artifact_reader.select_parameter_set_payload(image_id, image_index)
+        or artifact_reader.select_overlay_payload(image_id, image_index)
     )
     if not image_manifest:
         exit_with_err_msg(f"failed to find image with {image_id=}")

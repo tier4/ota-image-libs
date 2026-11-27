@@ -33,8 +33,8 @@ Schema as code: [`image_index/schema.py`](../src/ota_image_libs/v1/image_index/s
     The payload kinds share the OCI image manifest media type; a consumer tells them apart by `artifactType`, and one identifier (`ecu_id`, `release_key`) names at most one payload of any kind.
     This entry kind is known from 0.6.0 on. A consumer before that does not refuse the index for it: it takes the entry for a file-based payload and fails only when it parses the manifest of its own ECU's payload, which to it looks like a broken image. A campaign MUST NOT give a partition-based payload to an ECU whose consumer predates 0.6.0; the other ECUs of the same image are unaffected.
 
-  - **Parameter set** — A [parameter set](parameter_set.md) manifest descriptor with `artifactType` set to `application/vnd.tier4.ota.parameter-set.v1`, identified by the same two annotations: the ECU's payload in a parameter image.
-    An index that lists one lists parameter sets only (a parameter image), never beside a base payload.
+  - **Overlay** — An [overlay](overlay.md) manifest descriptor with `artifactType` set to `application/vnd.tier4.ota.overlay.v1`, identified by the same two annotations: the ECU's payload in an overlay image.
+    An index that lists one lists overlays only (an overlay image), never beside a base payload.
     This entry kind is known from 0.7.0 on. A consumer on 0.6.0 refuses the whole index for it, one before 0.6.0 fails on the manifest of its own ECU's entry; either way it changes nothing.
 
   - **OTAClient release package** — An [OTAClient package manifest](otaclient_package.md) descriptor with `artifactType` set to `application/vnd.tier4.otaclient.release-package.v1`.

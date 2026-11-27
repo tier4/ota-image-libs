@@ -11,4 +11,5 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Parameter set: the files of a few directories of an ECU's rootfs, delivered on their own."""
+"""Overlay: the files of a few directories of an ECU's rootfs, delivered on their
+own."""

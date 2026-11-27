@@ -3,7 +3,7 @@
 ## Overview
 
 An OTA image of specification version 1 is a unique representation of an input system image.
-An OTA image carries file-based payloads, where each file of a rootfs is tracked and deduplicated, and [partition-based payloads](partition_image.md), where whole partition images are; both share the index and the signing. A parameter image carries [parameter sets](parameter_set.md) instead: the files of a few directories of an ECU's rootfs, laid over the running base.
+An OTA image carries file-based payloads, where each file of a rootfs is tracked and deduplicated, and [partition-based payloads](partition_image.md), where whole partition images are; both share the index and the signing. An overlay image carries [overlays](overlay.md) instead: the files of a few directories of an ECU's rootfs, laid over the running base.
 
 An OTA image consists of the following components:
 
@@ -17,7 +17,7 @@ An OTA image consists of the following components:
 - **[Image Config](image_config.md)** — Configuration metadata for a file-based image payload, including architecture, OS information, system config reference, and statistics about the original rootfs.
 
 - **[Partition Image Payload](partition_image.md)** — An image payload made of whole partition images (or one vendor package) with a per-partition-role action list, for read-only, integrity-protected roots.
-- **[Parameter Set](parameter_set.md)** — An ECU's payload in a parameter image: one layer of a few directories of the rootfs (its slots), laid over the running base.
+- **[Overlay](overlay.md)** — An ECU's payload in an overlay image: one layer of a few directories of the rootfs (its slots), laid over the running base.
 
 - **[Sys Config](sys_config.md)** — System-level configuration for the target device, including hostname, mount points, swap, sysctl settings, and OTAClient configuration.
 
